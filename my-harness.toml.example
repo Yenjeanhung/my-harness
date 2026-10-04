@@ -1,0 +1,47 @@
+# 复制为 my-harness.toml 后按需修改；model 使用 LiteLLM 格式
+[agent]
+model = "openai/gpt-4o-mini"
+# model = "anthropic/claude-sonnet-4-20250514"
+# model = "deepseek/deepseek-chat"        # 需 DEEPSEEK_API_KEY
+# model = "zhipuai/glm-4-plus"            # 需 ZHIPUAI_API_KEY
+# workspace = "."
+
+[data]
+# dir = "~/.my-harness"                   # 事件库与会话 JSONL 存放位置
+
+[permissions]
+mode = "default"                           # default | acceptEdits | plan | dontAsk | bypass
+allow = ["Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(pytest*)"]
+deny = ["Bash(git push *)", "Bash(rm *)", "Bash(Remove-Item *)"]
+ask = []
+
+[context]
+context_window = 128000                    # 主模型窗口（用于 85% 摘要压缩触发）
+clear_trigger = 30000                      # input tokens 超过此值先清理旧工具结果
+# summarizer_model = "deepseek/deepseek-chat"  # 压缩摘要用的便宜模型，缺省=主模型
+
+[memory]
+consolidate = true                         # 会话结束后自动抽取事实并入 facts.md
+
+[skills]
+enabled = true                             # 扫描 ~/.my-harness/skills 与 <workspace>/.my-harness/skills
+
+[sandbox]
+type = "local"                             # local（权限闸+shadow 兜底）| docker（bash 进容器）
+# image = "python:3.12-slim"               # docker 模式镜像
+
+[pricing]                                  # USD / 1M tokens，覆盖内置近似价
+# "openai/gpt-4o-mini" = [0.15, 0.60]
+
+# hooks：shell 钩子（stdin 收 JSON 载荷；exit 2 或 stdout {"decision":"block"} 可阻断）
+# [hooks]
+# pre_tool_use = ["python guard.py"]
+# post_tool_use = []
+
+# MCP server（stdio：command/args；streamable http：url）；工具名注入为 mcp__<name>__<tool>
+# [mcp_servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "D:/some/dir"]
+# [mcp_servers.python]
+# command = "python"
+# args = ["-m", "my_mcp_server"]

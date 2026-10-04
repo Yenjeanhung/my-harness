@@ -1,0 +1,5 @@
+{
+  "name": "write-greeting",
+  "prompt": "Create a file named greeting.txt in the workspace containing exactly the word: hello",
+  "grader": { "type": "file_exists", "path": "greeting.txt" }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "count-python-lines",
+  "prompt": "Count the total number of lines in all .py files under src/ and reply with a single line: 'total: <N> lines'.",
+  "grader": { "type": "regex", "pattern": "total:\\s*\\d+\\s*lines" }
+}

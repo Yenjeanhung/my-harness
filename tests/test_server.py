@@ -380,3 +380,74 @@ def test_ws_reason_absent_when_provider_ignores(tmp_path):
         while True:
             if ws.receive_json()["type"] == "RunFinished":
                 break
+
+
+def test_ws_cancel_run(tmp_path):
+    """停止任务：CancelRun → cancel requested → run cancelled（前端据此复位运行态）。"""
+    import asyncio as _aio
+
+    class SlowProvider:
+        async def chat(self, *, system, messages, tools, model=None, on_delta=None, on_reason=None):
+            await _aio.sleep(30)
+            return TurnResult(text="never")
+
+    client = TestClient(_app(tmp_path, provider_factory=lambda: SlowProvider()))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "long task"})
+        assert ws.receive_json()["type"] == "RunStarted"
+
+        ws.send_json({"type": "CancelRun", "session_id": sid})
+        notices = []
+        while True:
+            r = ws.receive_json()
+            if r["type"] == "Notice":
+                notices = notices + [r["text"]]
+                if "run cancelled" in r["text"]:
+                    break
+        assert any("cancel requested" in t for t in notices)
+
+
+def test_ws_fork_session(tmp_path):
+    """分支会话：截到第一条用户消息 → 新会话只含前缀、标题 Fork of、自动切入。"""
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "first question"})
+        while True:
+            if ws.receive_json()["type"] == "RunFinished":
+                break
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "second question"})
+        while True:
+            if ws.receive_json()["type"] == "RunFinished":
+                break
+
+        # History 条目带 seq
+        ws.send_json({"type": "ResumeSession", "session_id": sid})
+        assert ws.receive_json()["type"] == "SessionResumed"
+        hist = ws.receive_json()
+        assert hist["type"] == "History"
+        first_user = next(i for i in hist["items"] if i["kind"] == "user")
+        assert isinstance(first_user["seq"], int)
+
+        # 从第一条消息分支
+        ws.send_json({"type": "ForkSession", "session_id": sid, "upto_seq": first_user["seq"]})
+        r = ws.receive_json()
+        assert r["type"] == "Notice" and "分支会话" in r["text"]
+        lst = ws.receive_json()
+        assert lst["type"] == "SessionList"
+        fork_row = next(s for s in lst["sessions"] if s["session_id"] != sid)
+        assert fork_row["title"].startswith("Fork of")
+        resumed = ws.receive_json()
+        assert resumed["type"] == "SessionResumed" and resumed["session_id"] == fork_row["session_id"]
+        fh = ws.receive_json()
+        assert fh["type"] == "History"
+        texts = [i["text"] for i in fh["items"] if i["kind"] == "user"]
+        assert texts == ["first question"]
+
+        # 分支会话不复制 run_finished：成本/统计不重复计数
+        ws.send_json({"type": "GetSessionCost", "session_id": fork_row["session_id"]})
+        c = ws.receive_json()
+        assert c["type"] == "SessionCost" and c["turns"] == 0

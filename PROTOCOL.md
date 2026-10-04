@@ -19,7 +19,8 @@
 | 命令 | 字段 | 回复事件 |
 |---|---|---|
 | `CreateSession` | — | `SessionCreated` |
-| `ResumeSession` | `session_id` | `SessionResumed` + `History`（回放历史条目）+ `SessionCost` |
+| `ResumeSession` | `session_id` | `SessionResumed` + `History`（回放历史条目，user/assistant 带 `seq`）+ `SessionCost` |
+| `ForkSession` | `session_id`, `upto_seq?`（截到该事件序号，缺省=全量复制） | `Notice` + `SessionList` + `SessionResumed` + `History`（新会话）。复制上下文事件为「Fork of <原标题>」新会话；不复制 run_finished（统计不重复计数）；截在带工具调用的助手消息上时自动补齐其后的 tool_results |
 | `ListSessions` | — | `SessionList`（含 `groups`） |
 | `SendMessage` | `session_id`, `text`, `images[]?`(`{media_type,data}` base64) | `RunStarted` → `TokenDelta`/`ToolCallStarted`/`ToolCallResult`/`Notice`… → `RunFinished` |
 | `CancelRun` | `session_id` | `Notice`（run cancelled） |

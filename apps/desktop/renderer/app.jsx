@@ -3,6 +3,18 @@
 // 输入栏：＋附件 / 权限模式 / 思考档位 / 模型切换 / 发送。设置页：模型(列表)/记忆/MCP/技能/常规。
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { marked } from "marked";
+
+marked.setOptions({ gfm: true, breaks: true });
+
+// 助手消息是模型输出的 Markdown：渲染成 HTML 前做最小净化（去 script/事件属性/js: 链接）
+function mdRender(text) {
+  const html = marked.parse(text || "");
+  return html
+    .replace(/<(script|style|iframe)[\s\S]*?<\/\1>/gi, "")
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, "");
+}
 
 const params = new URLSearchParams(window.location.search);
 const WS_URL = params.get("ws") || "ws://127.0.0.1:8765/ws";
@@ -30,14 +42,15 @@ const PROVIDER_BASES = {
   anthropic: "",
   custom: "",
 };
-const PERM_LABELS = {
-  default: "默认确认",
-  acceptEdits: "自动编辑",
-  plan: "计划模式",
-  dontAsk: "自动拒绝",
-  bypass: "完全访问",
-};
 const THINKING_LABELS = { off: "关", low: "低", high: "高", max: "最高" };
+// 权限模式：ZCode 式下拉（图标+标题+描述），完全访问用橘黄警示
+const PERM_META = {
+  plan: { label: "计划模式", desc: "编辑前先出计划，确认后再动手。", icon: "bulb" },
+  default: { label: "默认确认", desc: "写入和命令执行前先问我。", icon: "pointer" },
+  acceptEdits: { label: "自动编辑", desc: "自动应用文件编辑。", icon: "shield-check" },
+  dontAsk: { label: "自动拒绝", desc: "不询问，直接拒绝敏感操作。", icon: "shield-x" },
+  bypass: { label: "完全访问", desc: "跳过所有确认，谨慎使用。", icon: "shield-alert" },
+};
 
 let ws = null;
 let nextId = 1;
@@ -118,6 +131,60 @@ const ICON_PATHS = {
     </>
   ),
   zap: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="M21 21l-4.35-4.35" />
+    </>
+  ),
+  terminal: (
+    <>
+      <path d="M4 17l6-6-6-6" />
+      <path d="M12 19h8" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M13 2v7h7" />
+    </>
+  ),
+  bulb: (
+    <>
+      <path d="M9 18h6M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-3.5 10.9c.7.5 1.5 1.3 1.5 2.1h4c0-.8.8-1.6 1.5-2.1A6 6 0 0 0 12 3z" />
+    </>
+  ),
+  pointer: <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />,
+  shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  "shield-check": (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  "shield-x": (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
+    </>
+  ),
+  "shield-alert": (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </>
+  ),
+  chev: <path d="M6 9l6 6 6-6" />,
+  branch: (
+    <>
+      <path d="M6 3v12" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M18 9a9 9 0 0 1-9 9" />
+    </>
+  ),
   sliders: (
     <>
       <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
@@ -170,6 +237,26 @@ function fmtTok(n) {
 function fmtCost(c) {
   return c == null ? null : c < 0.0001 && c > 0 ? "<$0.0001" : `$${c.toFixed(4)}`;
 }
+
+// 工具调用 → ZCode 式活动行动词/目标/新增行数（+N 徽标）
+function describeTool(tool, args) {
+  const a = args || {};
+  const lines = (s) => (typeof s === "string" && s ? s.split("\n").length : null);
+  if (tool === "read_file") return { verb: "读取", icon: "file", target: a.path };
+  if (tool === "grep") return { verb: "搜索", icon: "search", target: a.pattern };
+  if (tool === "glob") return { verb: "查找", icon: "search", target: a.pattern };
+  if (tool === "write_file") return { verb: "写入", icon: "edit", target: a.path, add: lines(a.content) };
+  if (tool === "edit_file") return { verb: "编辑", icon: "edit", target: a.path, add: lines(a.new_str) };
+  if (tool === "bash") return { verb: "终端", icon: "terminal", target: (a.command || "").slice(0, 160) };
+  if (tool === "spawn_subagent") return { verb: "子代理", icon: "cpu", target: a.task ? String(a.task).slice(0, 100) : "" };
+  if (tool === "load_skill") return { verb: "技能", icon: "zap", target: a.name || a.skill || "" };
+  if (/^mcp__/.test(tool)) {
+    const parts = String(tool).split("__");
+    return { verb: "MCP", icon: "server", target: `${parts[1] || ""}·${parts.slice(2).join("__")}` };
+  }
+  if (/^(memory_|block_)/.test(tool)) return { verb: "记忆", icon: "database", target: a.path || a.label || "" };
+  return { verb: tool, icon: "zap", target: "" };
+}
 function splitModel(model, apiBase) {
   const slash = (model || "").indexOf("/");
   const p = slash > 0 ? model.slice(0, slash) : "";
@@ -217,6 +304,10 @@ function App() {
   const [elapsed, setElapsed] = useState(0);
   const [firstToken, setFirstToken] = useState(false); // 本轮是否已收到首 token
   const [reason, setReason] = useState(""); // 当前轮推理增量（保留末 400 字符，ZCode 式正在思考）
+  const [queue, setQueue] = useState([]); // 运行中排队的消息 {id, text, composed, imgs}
+  const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
+  const [outlineTip, setOutlineTip] = useState(null); // 左侧消息导航悬浮预览 {text, top}
+  const permDropRef = useRef(null);
   const [preview, setPreview] = useState(null); // 图片放大预览（dataURL）
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [onboard, setOnboard] = useState(true); // 首启引导：模型列表为空时全屏展示
@@ -236,9 +327,16 @@ function App() {
   const connRef = useRef("connecting");
   const sessionIdRef = useRef(null);
   const viewRef = useRef("chat");
+  const roundStart = useRef(0); // 当前思考轮起点（思考·持续了 N 秒）
+  const thinkPushed = useRef(true);
+  const reasonRef = useRef("");
+  const queueRef = useRef([]);
+  const runningRef = useRef(false);
   useEffect(() => { connRef.current = conn; }, [conn]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { runningRef.current = running; }, [running]);
 
   const addItem = (item) => setItems((prev) => [...prev, { id: nextId++, ...item }]);
   const patchLastAssistant = (fn) =>
@@ -253,12 +351,48 @@ function App() {
       return next;
     });
 
+  // 本轮思考结束（首个正文 token / 工具调用开始）→ 落一条「思考 · 持续了 N 秒」活动行
+  const pushThinkRow = () => {
+    if (thinkPushed.current) return;
+    thinkPushed.current = true;
+    const secs = Math.round((Date.now() - roundStart.current) / 1000);
+    const txt = reasonRef.current;
+    if (secs >= 1 || txt) addItem({ kind: "think", secs, text: txt ? txt.slice(-160) : "" });
+  };
+  // run 结束/被停止：所有还在 running 的工具卡片标记为已停止
+  const markRunEnded = () => {
+    reasonRef.current = "";
+    setReason("");
+    setItems((prev) =>
+      prev.map((it) =>
+        it.kind === "tool" && it.status === "running" ? { ...it, status: "fail", detail: "已停止" } : it
+      )
+    );
+  };
+  // 实际发送（composed=附件拼好的文本；队列回放时用入队时拼好的版本）
+  const sendNow = (text, composed, imgs) => {
+    addItem({ kind: "user", text, images: imgs && imgs.length ? imgs : undefined });
+    const msg = { type: "SendMessage", session_id: sessionIdRef.current, text: composed || text };
+    if (imgs && imgs.length) msg.images = imgs;
+    ws.send(JSON.stringify(msg));
+  };
+
   // 运行中的计时器
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => setElapsed((Date.now() - runStart.current) / 1000), 200);
     return () => clearInterval(t);
   }, [running]);
+
+  // 权限下拉：点击外面关闭
+  useEffect(() => {
+    if (!permOpen) return;
+    const onDown = (e) => {
+      if (permDropRef.current && !permDropRef.current.contains(e.target)) setPermOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [permOpen]);
 
   const connect = () => {
     setConn("connecting");
@@ -325,6 +459,8 @@ function App() {
               args: it.args ? JSON.stringify(it.args) : undefined,
               status: it.kind === "tool" ? "done" : undefined,
               images: it.images,
+              meta: it.kind === "tool" ? describeTool(it.tool, it.args) : undefined,
+              seq: it.seq,
             }))
           );
           break;
@@ -385,14 +521,19 @@ function App() {
           setRunning(true);
           setFirstToken(false);
           setReason("");
+          reasonRef.current = "";
+          roundStart.current = Date.now();
+          thinkPushed.current = false;
           runStart.current = Date.now();
           setElapsed(0);
           break;
         case "ReasoningDelta":
+          reasonRef.current = (reasonRef.current + e.text).slice(-400);
           setReason((r) => (r + e.text).slice(-400));
           break;
         case "TokenDelta":
           setFirstToken(true);
+          pushThinkRow();
           if (!assistantBuf.current) {
             assistantBuf.current = true;
             addItem({ kind: "assistant", text: "" });
@@ -401,11 +542,21 @@ function App() {
           break;
         case "ToolCallStarted":
           assistantBuf.current = null;
-          addItem({ kind: "tool", tool: e.tool, args: JSON.stringify(e.args), status: "running" });
+          pushThinkRow();
+          addItem({
+            kind: "tool",
+            tool: e.tool,
+            args: JSON.stringify(e.args),
+            status: "running",
+            meta: describeTool(e.tool, e.args),
+          });
           break;
         case "ToolCallResult":
           setFirstToken(false); // 工具跑完进入下一轮模型调用，重新进入等待
           setReason("");
+          reasonRef.current = "";
+          roundStart.current = Date.now();
+          thinkPushed.current = false;
           setItems((prev) => {
             const next = [...prev];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -424,6 +575,11 @@ function App() {
         case "Notice":
           assistantBuf.current = null;
           addItem({ kind: "notice", text: e.text });
+          if (/run cancelled/.test(e.text)) {
+            // 服务端确认任务已停止：复位运行态，排队的消息留在队列里等手动发送
+            setRunning(false);
+            markRunEnded();
+          }
           if (viewRef.current !== "chat") {
             if (/已删除 memory:/.test(e.text)) ws.send(JSON.stringify({ type: "ListMemory", session_id: sessionIdRef.current }));
             if (/已移除|已连接/.test(e.text)) ws.send(JSON.stringify({ type: "ListMcp" }));
@@ -436,7 +592,7 @@ function App() {
         case "RunFinished":
           assistantBuf.current = null;
           setRunning(false);
-          setReason("");
+          markRunEnded();
           patchLastAssistant((it) => ({
             duration_ms: e.duration_ms,
             usage: e.usage,
@@ -445,10 +601,20 @@ function App() {
           if (sessionIdRef.current)
             ws.send(JSON.stringify({ type: "GetSessionCost", session_id: sessionIdRef.current }));
           ws.send(JSON.stringify({ type: "ListSessions" }));
+          // 队列里有排队的消息：当前任务结束，自动发出第一条
+          {
+            const q = queueRef.current;
+            if (q.length && sessionIdRef.current && connRef.current === "open") {
+              setQueue((prev) => prev.slice(1));
+              const nxt = q[0];
+              setTimeout(() => sendNow(nxt.text, nxt.composed, nxt.imgs || []), 50);
+            }
+          }
           break;
         case "Error":
           assistantBuf.current = null;
           setRunning(false);
+          markRunEnded();
           {
             const msg = e.error || JSON.stringify(e);
             if (/ListSessions|GetSettings|SetModel|ResumeSession/.test(msg)) {
@@ -545,18 +711,39 @@ function App() {
     const text = input.trim();
     if (!text || connRef.current !== "open" || !sessionIdRef.current) return;
     const imgs = pasteImages.map((p) => ({ media_type: p.media_type, data: p.data }));
-    addItem({ kind: "user", text, images: imgs.length ? imgs : undefined });
-    const msg = {
-      type: "SendMessage",
-      session_id: sessionIdRef.current,
-      text: composeMessage(text),
-    };
-    if (imgs.length) msg.images = imgs;
-    ws.send(JSON.stringify(msg));
+    if (runningRef.current) {
+      // 任务运行中：入队等待，当前任务结束（RunFinished）后自动发出
+      setQueue((q) => [...q, { id: nextId++, text, composed: composeMessage(text), imgs }]);
+    } else {
+      sendNow(text, composeMessage(text), imgs);
+    }
     setInput("");
     setAttachments([]);
     setPasteImages([]);
   };
+
+  // 停止当前任务（服务端 CancelRun → run cancelled Notice 复位运行态）
+  const stopRun = () => {
+    if (connRef.current === "open" && sessionIdRef.current)
+      ws.send(JSON.stringify({ type: "CancelRun", session_id: sessionIdRef.current }));
+  };
+  // 分支会话：从指定消息（含）复制上下文开启新会话，服务端自动切入
+  const forkSession = (it) => {
+    if (connRef.current !== "open" || !sessionIdRef.current || it.seq == null) return;
+    ws.send(JSON.stringify({ type: "ForkSession", session_id: sessionIdRef.current, upto_seq: it.seq }));
+  };
+  const queueBump = (id) =>
+    setQueue((q) => {
+      const idx = q.findIndex((x) => x.id === id);
+      if (idx <= 0) return q;
+      const item = q[idx];
+      return [item, ...q.filter((x) => x.id !== id)];
+    });
+  const queueEdit = (qitem) => {
+    setInput(qitem.text);
+    setQueue((q) => q.filter((x) => x.id !== qitem.id));
+  };
+  const queueDelete = (id) => setQueue((q) => q.filter((x) => x.id !== id));
 
   const submitAttach = () => {
     const p = attachPath.trim();
@@ -630,6 +817,8 @@ function App() {
   const currentModel = settings.model || "(默认)";
   const currentSession = (sessions || []).find((s) => s.session_id === sessionId);
   const currentTitle = currentSession?.title || (sessionId ? `新会话 ${sessionId.slice(0, 6)}` : "未开始");
+  // 左侧消息导航（ZCode 式 outline）：用户/助手消息各一条，宽度随内容长度
+  const outlineItems = items.filter((it) => (it.kind === "user" || it.kind === "assistant") && it.text);
   const composedModel =
     modelForm.provider === "custom"
       ? `openai/${modelForm.modelName.trim()}`
@@ -1188,6 +1377,20 @@ function App() {
         </div>
       </aside>
       <div className="main">
+        {queue.map((q) => (
+          <div key={q.id} className="queue-row">
+            <div className="qtext" title={q.text}>{q.text}</div>
+            <button className="qbtn primary" title="插到队首，当前任务结束后立即发送" onClick={() => queueBump(q.id)}>
+              ↑ 立即
+            </button>
+            <button className="qbtn" title="改回输入框" onClick={() => queueEdit(q)}>
+              <Icon name="edit" size={12} />
+            </button>
+            <button className="qbtn" title="移除" onClick={() => queueDelete(q.id)}>
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        ))}
         <header>
           <span className={"dot " + dot} />
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
@@ -1199,21 +1402,67 @@ function App() {
             {stateText ? ` · ${stateText}` : ""}
           </span>
         </header>
-        <div id="msgs" ref={listRef}>
+        {outlineItems.length > 1 && (
+          <div className="outline-nav">
+            {outlineItems.map((it) => (
+              <div
+                key={it.id}
+                className={"obar" + (it.kind === "user" ? " me" : "")}
+                style={{ width: `${Math.min(52, 12 + Math.min(it.text.length, 400) / 8)}px` }}
+                onClick={() => {
+                  const el = document.querySelector(`[data-mid="${it.id}"]`);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                onMouseEnter={(e) =>
+                  // offsetTop 相对导航条（自身 top:54px），换算成 .main 坐标 + 64 间隙
+                  setOutlineTip({ text: it.text.slice(0, 200), top: e.currentTarget.offsetTop + 64 })
+                }
+                onMouseLeave={() => setOutlineTip(null)}
+              />
+            ))}
+          </div>
+        )}
+        {outlineTip && (
+          <div className="outline-tip" style={{ top: outlineTip.top }}>{outlineTip.text}</div>
+        )}
+        <div id="msgs" ref={listRef} className={outlineItems.length > 1 ? "with-nav" : ""}>
           {items.map((it) => {
-            if (it.kind === "tool") {
+            if (it.kind === "think") {
               return (
-                <div key={it.id} className={"tool " + (it.status === "done" ? "done" : it.status === "fail" ? "fail" : "")}>
-                  <span className="tname">{it.tool}</span>({it.args})
+                <div key={it.id} className="act-think" title={it.text || ""}>
+                  <Icon name="cpu" size={12} />
+                  思考{it.secs ? ` · 持续了 ${it.secs} 秒` : ""}
+                </div>
+              );
+            }
+            if (it.kind === "tool") {
+              const m = it.meta || {};
+              return (
+                <div
+                  key={it.id}
+                  className={"tool " + (it.status === "done" ? "done" : it.status === "fail" ? "fail" : "")}
+                  title={it.args || it.tool}
+                >
+                  <span className="ticon"><Icon name={m.icon || "zap"} size={12} /></span>
+                  <span className="tverb">{m.verb || it.tool}</span>
+                  {m.target ? <span className="ttarget">{m.target}</span> : null}
+                  {m.add != null ? <span className="tadd">+{m.add}</span> : null}
                   <span className="tstatus">
-                    {it.status === "running" ? "…running" : it.status === "done" ? `✓ ${it.detail}` : `✗ ${it.detail}`}
+                    {it.status === "running" ? "…running" : it.status === "done" ? "✓" : `✗ ${it.detail || ""}`}
                   </span>
                 </div>
               );
             }
             if (it.kind === "user") {
               return (
-                <div key={it.id} className="msg user">
+                <div key={it.id} className="msg user" data-mid={it.id}>
+                  {it.seq != null && (
+                    <div className="msg-actions">
+                      <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
+                        <Icon name="branch" size={13} />
+                      </button>
+                    </div>
+                  )}
                   <div className="bubble">
                     {it.images && it.images.length > 0 && (
                       <div className="imgs">
@@ -1233,8 +1482,19 @@ function App() {
               );
             }
             return (
-              <div key={it.id} className={"msg " + it.kind}>
-                {it.text}
+              <div key={it.id} className={"msg " + it.kind} data-mid={it.kind === "assistant" ? it.id : undefined}>
+                {it.kind === "assistant" && it.seq != null && (
+                  <div className="msg-actions">
+                    <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
+                      <Icon name="branch" size={13} />
+                    </button>
+                  </div>
+                )}
+                {it.kind === "assistant" && it.text ? (
+                  <div className="md" dangerouslySetInnerHTML={{ __html: mdRender(it.text) }} />
+                ) : (
+                  it.text
+                )}
                 {it.kind === "assistant" && it.text === "" ? <span className="cursor" /> : null}
                 {it.kind === "assistant" && it.duration_ms != null ? (
                   <div className="dur">
@@ -1310,7 +1570,13 @@ function App() {
             id="input"
             rows={2}
             value={input}
-            placeholder={conn === "open" ? "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…" : "等待连接…"}
+            placeholder={
+              running
+                ? "继续输入以排队后续修改…（Enter 入队，当前任务结束后自动发送）"
+                : conn === "open"
+                  ? "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…"
+                  : "等待连接…"
+            }
             onChange={(e) => setInput(e.target.value)}
             onPaste={onPaste}
             onKeyDown={(e) => {
@@ -1323,16 +1589,38 @@ function App() {
           />
           <div className="controls">
             <button className="ctl" title="添加工作区文件为附件" onClick={() => setShowAttach((s) => !s)}>＋</button>
-            <select
-              className="ctl"
-              value={permMode}
-              title="权限模式"
-              onChange={(e) => setPerm(e.target.value)}
-            >
-              {Object.entries(PERM_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+            <div className="pdrop" ref={permDropRef}>
+              <button
+                className={"ctl pchip" + (permMode === "bypass" ? " hot" : "")}
+                title="权限模式"
+                onClick={() => setPermOpen((s) => !s)}
+              >
+                <Icon name={(PERM_META[permMode] || PERM_META.default).icon} size={12} />
+                {(PERM_META[permMode] || PERM_META.default).label}
+                <Icon name="chev" size={11} />
+              </button>
+              {permOpen && (
+                <div className="pmenu">
+                  {Object.entries(PERM_META).map(([k, m]) => (
+                    <div
+                      key={k}
+                      className={"pitem" + (k === permMode ? " active" : "")}
+                      onClick={() => {
+                        setPerm(k);
+                        setPermOpen(false);
+                      }}
+                    >
+                      <span className="picon"><Icon name={m.icon} size={15} /></span>
+                      <span className="pbody">
+                        <b>{m.label}</b>
+                        <i>{m.desc}</i>
+                      </span>
+                      {k === permMode && <span className="pcheck"><Icon name="check" size={14} /></span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div style={{ flex: 1 }} />
             <select className="ctl" value={thinking} title="思考档位" onChange={(e) => setThink(e.target.value)}>
               {Object.entries(THINKING_LABELS).map(([k, v]) => (
@@ -1357,7 +1645,11 @@ function App() {
               ))}
               <option value="__manage__">⚙ 管理模型…</option>
             </select>
-            <button className="send" onClick={send} disabled={conn !== "open" || !input.trim()}>↑</button>
+            {running ? (
+              <button className="send stop" title="停止当前任务" onClick={stopRun}>■</button>
+            ) : (
+              <button className="send" onClick={send} disabled={conn !== "open" || !input.trim()}>↑</button>
+            )}
           </div>
         </div>
       </div>

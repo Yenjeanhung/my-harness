@@ -8,7 +8,7 @@
                  / SetPermissionMode / SetThinking / ReadWorkspaceFile
                  / ListMemory / ReadMemoryFile / DeleteMemoryFile / DeleteMemoryBlock
                  / ListMcp / AddMcpServer / RemoveMcpServer / ListSkills / Ping
-                 / GetSessionCost / GetStats / OpenDataDir / TestModel
+                 / GetSessionCost / GetStats / OpenDataDir / TestModel / ForkSession
   server→client: SessionCreated / SessionResumed / SessionList / RunStarted / TokenDelta
                  / ReasoningDelta / ToolCallStarted / ToolCallResult / Notice / PermissionRequest
                  / RunFinished(含 duration_ms + usage/cost_usd) / Error / ModelSet / Settings
@@ -329,6 +329,8 @@ class ServerState:
             self._notify({"type": "Notice", "text": f"已打开数据目录 {self.cfg.data_dir}"})
         elif t == "TestModel":
             await self._test_model(msg)
+        elif t == "ForkSession":
+            await self._fork_session(msg)
         elif t == "ListMemory":
             self._memory_list(msg.get("session_id", ""))
         elif t == "ReadMemoryFile":
@@ -397,11 +399,14 @@ class ServerState:
         self._notify(self._history_payload(self.sessions[sid][0]))
 
     def _history_payload(self, sess: Session) -> dict[str, Any]:
-        """把会话的事件流回放为界面可渲染的历史条目（打开应用即恢复上次对话）。"""
+        """把会话的事件流回放为界面可渲染的历史条目（打开应用即恢复上次对话）。
+
+        条目带 seq：前端据此提供「从此消息开启分支会话」。
+        """
         items: list[dict[str, Any]] = []
-        for m in sess.messages():
+        for seq, m in sess.messages_with_seq():
             if m.role == "user":
-                item: dict[str, Any] = {"kind": "user", "text": m.text()}
+                item: dict[str, Any] = {"kind": "user", "text": m.text(), "seq": seq}
                 imgs = [
                     {"media_type": b.media_type, "data": b.data}
                     for b in m.blocks
@@ -415,10 +420,50 @@ class ServerState:
                     if hasattr(b, "input"):
                         items.append({"kind": "tool", "tool": b.name, "args": b.input})
                 if m.text():
-                    items.append({"kind": "assistant", "text": m.text()})
+                    items.append({"kind": "assistant", "text": m.text(), "seq": seq})
             elif m.role == "tool":
                 continue  # 工具结果卡片在回放中省略，保持历史紧凑
         return {"type": "History", "session_id": sess.id, "items": items}
+
+    async def _fork_session(self, msg: dict) -> None:
+        """分支会话：复制原会话截止到 upto_seq 的上下文事件为新会话，并自动切入。
+
+        只复制对话上下文事件（user/assistant/tool_results）；不复制 COMPACTION
+        （其 payload 按 seq 引用原会话消息，复制后 seq 重排会失配，fork 只带原始
+        前缀事件、语义等价），也不复制 run_started/run_finished（避免统计重复计数）
+        与审批/子代理等元事件。标题 = "Fork of <原标题>"。
+        """
+        src_id = msg.get("session_id", "")
+        upto = msg.get("upto_seq")
+        src_events = self.store.list_events(src_id)
+        if not src_events:
+            raise ValueError(f"unknown or empty session: {src_id}")
+        copy_types = {EventType.USER_MESSAGE, EventType.ASSISTANT_MESSAGE, EventType.TOOL_RESULTS}
+        upto_i = int(upto) if upto is not None else None
+        selected = [e for e in src_events if e.type in copy_types and (upto_i is None or e.seq <= upto_i)]
+        if upto_i is not None and not any(e.type == EventType.USER_MESSAGE for e in selected):
+            raise ValueError("branch point is before the first message")
+        if upto_i is not None:
+            # 截在带 tool_use 的助手消息上时，把紧随的 TOOL_RESULTS 一并带上
+            #（模型约定 tool_calls 后必须跟 tool 消息，缺了下一轮调用会 400）
+            for e in src_events:
+                if e.seq <= upto_i:
+                    continue
+                if e.type == EventType.TOOL_RESULTS:
+                    selected.append(e)
+                else:
+                    break
+        new_sess = Session(self.store)
+        for e in selected:
+            self.store.append(new_sess.id, e.type, e.payload)
+        src_title = next(
+            (s["title"] for s in self.store.list_sessions() if s["session_id"] == src_id), ""
+        )
+        title = f"Fork of {src_title or src_id[:8]}".strip()[:80]
+        self.store.set_session_meta(new_sess.id, title=title)
+        self._notify({"type": "Notice", "text": f"已创建分支会话：{title}"})
+        self._session_list()
+        await self._resume_session({"session_id": new_sess.id})
 
     async def _register_session(self, sess: Session, created: bool) -> None:
         if created:  # 让 list_sessions 能看到零事件的新会话

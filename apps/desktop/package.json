@@ -12,6 +12,7 @@
     "dist": "node build.mjs && node prepkg.cjs && electron-builder --win"
   },
   "dependencies": {
+    "marked": "^18.0.14",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

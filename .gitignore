@@ -9,3 +9,4 @@ node_modules/
 packaging/build/
 my-harness.toml
 .my-harness/
+*.log

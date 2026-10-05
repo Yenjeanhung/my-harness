@@ -6,8 +6,9 @@
 > 工作流，都是同一份协议。
 
 - 传输：WebSocket，默认 `ws://127.0.0.1:8765/ws`（`harness serve --port` 可改）
-- 健康检查：`GET http://127.0.0.1:8765/health` → `{"status":"ok","version":"0.1.0","sessions":N,"tools":N}`
+- 健康检查：`GET http://127.0.0.1:8765/health` → `{"status":"ok","version":"0.2.0","workspace":"<工作区根>","sessions":N,"tools":N}`
   - `version` 用于版本握手：桌面端发现版本不匹配会自动替换旧 daemon
+  - `workspace` 让桌面端判断 daemon 是否已在跑目标项目（同版本同工作区则直接附着，不重启）
 - 消息格式：单条 JSON 对象，一律带 `type` 字段；请求-响应没有显式 id 关联，
   按 `type` + `session_id` 对应（一条命令可能触发多条事件，见下）
 - 事件溯源：会话的一切（消息、工具调用、审批、运行用量）都是 append-only 事件，
@@ -22,7 +23,7 @@
 | `ResumeSession` | `session_id` | `SessionResumed` + `History`（回放历史条目，user/assistant 带 `seq`）+ `SessionCost` |
 | `ForkSession` | `session_id`, `upto_seq?`（截到该事件序号，缺省=全量复制） | `Notice` + `SessionList` + `SessionResumed` + `History`（新会话）。复制上下文事件为「Fork of <原标题>」新会话；不复制 run_finished（统计不重复计数）；截在带工具调用的助手消息上时自动补齐其后的 tool_results |
 | `ListSessions` | — | `SessionList`（含 `groups`） |
-| `SendMessage` | `session_id`, `text`, `images[]?`(`{media_type,data}` base64) | `RunStarted` → `TokenDelta`/`ToolCallStarted`/`ToolCallResult`/`Notice`… → `RunFinished` |
+| `SendMessage` | `session_id`, `text`, `images[]?`(`{media_type,data}` base64) | `RunStarted` → `TokenDelta`/`ToolCallArgs`/`ToolCallStarted`/`ToolCallOutput`/`ToolCallResult`/`Notice`… → `RunFinished` |
 | `CancelRun` | `session_id` | `Notice`（run cancelled） |
 | `DeleteSession` | `session_id` | `Notice` + `SessionList`（物理删除事件行+JSONL；正在跑的先取消） |
 | `RenameSession` | `session_id`, `title` | `SessionList` |
@@ -82,7 +83,10 @@
 | `RunStarted` | `session_id` | 一轮 run 开始 |
 | `TokenDelta` | `session_id`, `text` | 流式文本增量 |
 | `ReasoningDelta` | `session_id`, `text` | 推理内容增量（GLM/DeepSeek 系 reasoning_content；客户端用于「正在思考」实时展示，可忽略） |
-| `ToolCallStarted` / `ToolCallResult` | `tool`, `args` / `tool`, `is_error`, `chars` | 工具卡片 |
+| `ToolCallArgs` | `session_id`, `call_id`, `tool`, `args_text` | 工具调用参数仍在生成时的流式预览（累积原始 JSON 文本）；客户端可提前画出工具卡片，`ToolCallStarted` 随后带最终 `args` |
+| `ToolCallStarted` / `ToolCallResult` | `tool`, `args`, `call_id?` / `tool`, `is_error`, `chars`, `call_id?` | 工具卡片；`call_id` 与 `ToolCallArgs`/`ToolCallOutput` 关联同一张卡片 |
+| `ToolCallOutput` | `session_id`, `call_id`, `tool`, `text` | 工具执行期过程输出增量（bash 逐行 stdout），客户端在卡片内实时滚动；可忽略 |
+| `Usage` | `session_id`, `input_tokens`, `output_tokens` | 每轮模型返回后推送的本 run 累计 token（含子代理），客户端实时显示会话用量；可忽略 |
 | `RunFinished` | `answer`, `duration_ms`, `usage{input_tokens,output_tokens}`, `cost_usd`(价格未知为 null), `last_seq`(本轮最后一条消息的 seq，会话为空为 null) | 一轮结束，带用量与近似费用；前端据 `last_seq` 让新消息立刻可分支 |
 | `PermissionRequest` | `request_id`, `tool`, `reason` | 需要审批；用 `RespondPermission` 应答 |
 | `Notice` | `text`, `session_id?` | 非致命通知（取消/导出/权限切换等） |

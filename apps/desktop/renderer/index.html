@@ -13,7 +13,7 @@
       ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
       body {
         margin: 0; background: #111318; color: #d7dae0;
-        font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+        font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px;
         overflow: hidden;
       }
       button { background: #21262d; color: #d7dae0; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
@@ -68,6 +68,24 @@
       .ghead .glabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .ghead .gact { display: flex; align-items: center; gap: 2px; }
       .ghead.drop { background: #111a27; outline: 1px dashed #1f6feb; outline-offset: -2px; border-radius: 6px; }
+
+      /* —— 项目 tab（侧栏第三个 tab） —— */
+      .proj-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 10px; }
+      .proj-card {
+        margin: 10px 14px 0; padding: 10px 12px;
+        background: #161921; border: 1px solid #262a33; border-radius: 10px;
+      }
+      .proj-label { font-size: 11px; color: #7d8590; text-transform: uppercase; letter-spacing: .06em; }
+      .proj-card .proj-path {
+        font-size: 13.5px; font-weight: 600; color: #d7dae0; margin-top: 3px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .proj-card .proj-full {
+        font-size: 11px; color: #7d8590; margin-top: 2px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .proj-pane .sess .stitle { display: flex; align-items: center; gap: 6px; }
+      .proj-pane .proj-hint { margin: auto 14px 4px; padding-top: 10px; font-size: 11px; color: #6e7681; line-height: 1.5; }
       .drop-hint { margin: 6px 14px; padding: 9px; border: 1px dashed #30363d; border-radius: 8px; text-align: center; color: #7d8590; font-size: 11.5px; }
       .moveselect { background: #0d1017; color: #d7dae0; border: 1px solid #1f6feb; border-radius: 4px; font-size: 11.5px; padding: 2px 4px; outline: none; }
       aside .sess[draggable="true"] { cursor: grab; }
@@ -181,30 +199,51 @@
         display: flex; align-items: center; justify-content: center; cursor: zoom-out;
       }
       .lightbox img { max-width: 92%; max-height: 92%; border-radius: 8px; }
-      .thinking-line {
-        align-self: flex-start; color: #8b949e; font-size: 12.5px;
-        display: flex; gap: 8px; align-items: center; font-family: Consolas, monospace;
-        max-width: 94%;
+      /* 切换项目遮罩：daemon 重启期间提示进度，避免「连接断开」看起来像失败 */
+      .switching-mask {
+        position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 70;
+        display: flex; align-items: center; justify-content: center;
       }
-      .thinking-line .reason {
-        flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-        white-space: nowrap; color: #8b949e; cursor: default;
+      .switching-card {
+        background: #161921; border: 1px solid #30363d; border-radius: 12px;
+        padding: 22px 30px; display: flex; flex-direction: column; gap: 8px; align-items: center;
+        color: #d7dae0; font-size: 13.5px;
       }
-      .working {
-        align-self: flex-start; max-width: 94%;
-        display: flex; flex-direction: column; gap: 6px;
-      }
-      .working-head { color: #7d8590; font-size: 12.5px; }
-      .thinking-line .spin {
-        width: 12px; height: 12px; border-radius: 50%;
+      .switching-card .meta { color: #7d8590; font-size: 12px; }
+      .switching-card .spin {
+        width: 18px; height: 18px; border-radius: 50%;
         border: 2px solid #30363d; border-top-color: #79c0ff;
         animation: rot 1s linear infinite;
       }
+      .working {
+        /* 占满整行：fit-content 定宽在嵌套 flex 下会被算窄，挤得思考行逐字换行 */
+        align-self: stretch;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .working-head {
+        color: #7d8590; font-size: 12.5px;
+        display: flex; gap: 8px; align-items: center;
+      }
+      .working-head .spin, .thinking-line .spin {
+        width: 12px; height: 12px; border-radius: 50%;
+        border: 2px solid #30363d; border-top-color: #79c0ff;
+        animation: rot 1s linear infinite;
+        flex: none;
+      }
       @keyframes rot { to { transform: rotate(360deg); } }
+      /* ZCode 式实时思考区：推理全文流式显示，高度封顶内部滚动 */
+      .think-live {
+        align-self: stretch; max-height: 220px; overflow-y: auto;
+        border-left: 2px solid #30363d; padding: 2px 0 2px 10px;
+      }
+      .think-live pre {
+        margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.55;
+        color: #8b949e; white-space: pre-wrap; word-break: break-word;
+      }
       .msg.assistant { align-self: flex-start; max-width: 94%; color: #d7dae0; }
       .msg.notice { align-self: center; color: #d2a8ff; font-size: 12px; background: #161921; border-radius: 999px; padding: 3px 14px; }
       .msg.error { align-self: stretch; color: #f85149; }
-      .dur { font-size: 11px; color: #7d8590; font-family: Consolas, monospace; }
+      .dur { font-size: 11px; color: #7d8590; }
       .msg-foot .dur { margin-left: 5px; }
       .tool {
         align-self: flex-start; max-width: 94%;
@@ -218,15 +257,53 @@
       .tool .tadd { color: #3fb950; }
       .tool .tstatus { margin-left: auto; }
       .tool.done { color: #3fb950; }
-      .tool.fail { color: #f85149; }
+      /* 失败：卡片保持中性色，仅状态字柔和红（UI 字体），错误详情在悬浮提示 */
+      .tool.fail { color: #8b949e; }
+      .tool .tstatus.fail {
+        color: #ff7b72; font-weight: 400;
+        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 12px; letter-spacing: 0.2px;
+      }
+      /* 用户主动停止：中性灰弱化（不是错误），状态字用 UI 字体去等宽感 */
+      .tool.stopped { color: #6e7681; }
+      .tool.stopped .ticon { color: #6e7681; }
+      .tool .tstatus.stopped {
+        color: #7d8590; font-weight: 400;
+        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 12px; letter-spacing: 0.2px;
+      }
       .act-think {
         align-self: flex-start; display: flex; gap: 6px; align-items: center;
         color: #7d8590; font-size: 12.5px; padding: 2px 0; max-width: 94%;
+        white-space: nowrap;
+      }
+      .tool.live { color: #c9d1d9; }
+      .tool.live .ticon { color: #79c0ff; }
+      .tool .tstatus { margin-left: auto; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+      /* 运行中卡片的持续动画：命令安静期也能看出「还在干活」 */
+      .tool .spin {
+        width: 10px; height: 10px; border-radius: 50%; flex: none;
+        border: 2px solid #30363d; border-top-color: #79c0ff;
+        animation: rot 1s linear infinite;
+      }
+      .tool .ttarget.raw { color: #6e7681; max-width: 380px; }
+      .tool .tout {
+        flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: #7d8590; font-size: 11.5px; border-top: 1px dashed #262a33; padding-top: 4px; margin-top: 2px;
+      }
+      .act-think-wrap { align-self: flex-start; max-width: 94%; }
+      .act-think.clickable { cursor: pointer; user-select: none; }
+      .act-think.clickable:hover { color: #c9d1d9; }
+      .act-think .think-chev { font-size: 10px; }
+      .think-full {
+        margin: 2px 0 6px; padding: 6px 12px; max-height: 260px; overflow-y: auto;
+        border-left: 2px solid #262a33; color: #8b949e; font-size: 12px; line-height: 1.55;
+        white-space: pre-wrap; word-break: break-word;
       }
 
-      /* —— 运行中排队消息 —— */
+      /* —— 运行中排队消息：悬停在输入框上方（ZCode 式） —— */
       .queue-row {
-        margin: 10px 14px 0; display: flex; align-items: center; gap: 8px;
+        margin: 0 14px 8px; display: flex; align-items: center; gap: 8px;
         background: #161921; border: 1px solid #30363d; border-radius: 10px; padding: 8px 12px;
         flex: none;
       }
@@ -292,10 +369,16 @@
       }
       .controls .send:disabled { opacity: 0.4; cursor: default; }
       .controls .send.stop {
-        background: #21262d; border: 1px solid #30363d; color: #f85149;
-        font-size: 11px;
+        background: #21262d; border: 1px solid #30363d; color: #d7dae0;
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 0;
       }
-      .controls .send.stop:hover { border-color: #f85149; background: #2a1518; }
+      .controls .send.stop:hover { border-color: #4d5560; background: #2a2f37; }
+      /* 停止图标：CSS 画的圆角方块（ZCode 式），比文字 ■ 大且清晰 */
+      .controls .send.stop .stopsq {
+        width: 11px; height: 11px; background: currentColor; border-radius: 2.5px;
+        display: block;
+      }
       .atchips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
       .atchips .chip {
         display: inline-flex; align-items: center; gap: 6px; font-size: 12px;

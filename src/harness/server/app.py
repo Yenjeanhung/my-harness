@@ -10,7 +10,8 @@
                  / ListMcp / AddMcpServer / RemoveMcpServer / ListSkills / Ping
                  / GetSessionCost / GetStats / OpenDataDir / TestModel / ForkSession
   server→client: SessionCreated / SessionResumed / SessionList / RunStarted / TokenDelta
-                 / ReasoningDelta / ToolCallStarted / ToolCallResult / Notice / PermissionRequest
+                 / ReasoningDelta / ToolCallArgs / ToolCallStarted / ToolCallOutput / ToolCallResult
+                 / Notice / PermissionRequest
                  / RunFinished(含 duration_ms + usage/cost_usd) / Error / ModelSet / Settings
                  / WorkspaceFile / MemoryList / MemoryFileContent / McpList / SkillList / Pong
                  / SessionCost / Stats / ModelTestResult
@@ -843,18 +844,59 @@ class ServerState:
                 on_delta=lambda d: self._notify({"type": "TokenDelta", "session_id": sid, "text": d}),
                 on_reason=lambda r: self._notify({"type": "ReasoningDelta", "session_id": sid, "text": r}),
                 on_tool=lambda tu: self._notify(
-                    {"type": "ToolCallStarted", "session_id": sid, "tool": tu.name, "args": tu.input}
+                    {
+                        "type": "ToolCallStarted",
+                        "session_id": sid,
+                        "call_id": tu.id,
+                        "tool": tu.name,
+                        "args": tu.input,
+                    }
                 ),
                 on_tool_result=lambda tu, tr: self._notify(
                     {
                         "type": "ToolCallResult",
                         "session_id": sid,
+                        "call_id": tu.id,
                         "tool": tu.name,
                         "is_error": tr.is_error,
                         "chars": len(tr.content),
+                        # 失败时附错误摘要：悬浮在卡片上能直接看到原因，不用翻 JSONL
+                        **(
+                            {"preview": " ".join(tr.content[:200].split())}
+                            if tr.is_error
+                            else {}
+                        ),
                     }
                 ),
                 on_notice=lambda n: self._notify({"type": "Notice", "session_id": sid, "text": n}),
+                # 粒度对齐 ZCode：参数边生成边推（卡片提前出现）、工具执行期输出实时滚动
+                on_tool_args=lambda call_id, name, args_text: self._notify(
+                    {
+                        "type": "ToolCallArgs",
+                        "session_id": sid,
+                        "call_id": call_id,
+                        "tool": name,
+                        "args_text": args_text,
+                    }
+                ),
+                on_tool_output=lambda tu, chunk: self._notify(
+                    {
+                        "type": "ToolCallOutput",
+                        "session_id": sid,
+                        "call_id": tu.id,
+                        "tool": tu.name,
+                        "text": chunk,
+                    }
+                ),
+                # 每轮模型返回后推送本 run 累计 token（顶栏「会话 ↑↓tok」实时跳动）
+                on_usage=lambda u: self._notify(
+                    {
+                        "type": "Usage",
+                        "session_id": sid,
+                        "input_tokens": u.input_tokens,
+                        "output_tokens": u.output_tokens,
+                    }
+                ),
             )
             usage = {"input_tokens": budget.usage.input_tokens, "output_tokens": budget.usage.output_tokens}
             model = getattr(loop.provider, "default_model", "")  # 空（测试桩）→ cost None，不猜测
@@ -872,6 +914,9 @@ class ServerState:
                 }
             )
         except asyncio.CancelledError:
+            # 先释放 running 槽位再通知：前端收到 "run cancelled" 立刻补发排队消息时，
+            # _send_message 的 "run in progress" 检查必须已经放行
+            self.running.pop(sid, None)
             self._notify({"type": "Notice", "session_id": sid, "text": "run cancelled"})
         except Exception as e:
             self._notify({"type": "Error", "session_id": sid, "error": f"{type(e).__name__}: {e}"})
@@ -905,10 +950,12 @@ def create_app(
 
     @app.get("/health")
     def health():
-        # version 用于桌面端版本握手：不匹配的旧 daemon 会被自动替换
+        # version 用于桌面端版本握手：不匹配的旧 daemon 会被自动替换；
+        # workspace 让桌面端判断 daemon 是否已在跑目标项目的工作区（避免无谓重启）
         return {
             "status": "ok",
             "version": __version__,
+            "workspace": str(Path(cfg.workspace).resolve()),
             "sessions": len(state.sessions),
             "tools": len(state.registry.specs()),
         }

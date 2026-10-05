@@ -142,8 +142,11 @@ export type WsEvent =
   | { type: "RunStarted" }
   | { type: "ReasoningDelta"; text: string }
   | { type: "TokenDelta"; text: string }
-  | { type: "ToolCallStarted"; tool: string; args?: unknown }
-  | { type: "ToolCallResult"; tool: string; is_error?: boolean; chars?: number }
+  | { type: "ToolCallArgs"; call_id: string; tool: string; args_text: string }
+  | { type: "ToolCallStarted"; call_id?: string; tool: string; args?: unknown }
+  | { type: "ToolCallOutput"; call_id: string; tool: string; text: string }
+  | { type: "Usage"; session_id?: string; input_tokens: number; output_tokens: number }
+  | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)
   | {
@@ -201,3 +204,21 @@ export type WsCommand =
   | { type: "RenameSessionGroup"; name: string; new_name: string }
   | { type: "DeleteSessionGroup"; name: string }
   | { type: "SetSessionGroup"; session_id: string; group: string };
+
+// Electron preload（preload.cjs）暴露的桌面能力；在纯浏览器环境（如调试）下不存在
+declare global {
+  interface Window {
+    myharness?: {
+      pickFolder(): Promise<string | null>;
+      getProjects(): Promise<{ current: string | null; recent: string[] }>;
+      openProject(p: string): Promise<string>;
+      // —— 内嵌终端（node-pty 会话，渲染端 xterm.js 交互）——
+      termCreate(cols: number, rows: number): Promise<{ id: number; cwd: string; title: string }>;
+      termInput(id: number, data: string): void;
+      termResize(id: number, cols: number, rows: number): void;
+      termKill(id: number): void;
+      termOnData(cb: (id: number, data: string) => void): void;
+      termOnExit(cb: (id: number, exitCode: number) => void): void;
+    };
+  }
+}

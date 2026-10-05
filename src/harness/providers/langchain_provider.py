@@ -23,6 +23,35 @@ DEFAULT_BASES = {
 }
 
 
+def _patch_lc_reasoning() -> None:
+    """langchain-openai 的流式解析只挑官方 OpenAI 字段，GLM/DeepSeek 系在 delta 里给的
+    reasoning_content 会被静默丢弃（裸 SSE 实测 coding 端点每条回复几百个推理 delta）。
+    包一层转换函数，把该非标字段捞回 additional_kwargs.reasoning_content，chat() 再读出。"""
+    try:
+        from langchain_openai.chat_models import base as lc_base
+    except Exception:  # 未装 langchain-openai 时跳过（litellm 后端不需要）
+        return
+    if getattr(lc_base, "_myharness_reasoning_patched", False):
+        return
+    orig = lc_base._convert_delta_to_message_chunk
+
+    def _with_reasoning(_dict, default_class):
+        chunk = orig(_dict, default_class)
+        try:
+            rc = _dict.get("reasoning_content")
+        except AttributeError:
+            rc = getattr(_dict, "reasoning_content", None)
+        if rc and getattr(chunk, "additional_kwargs", None) is not None:
+            chunk.additional_kwargs = {**chunk.additional_kwargs, "reasoning_content": rc}
+        return chunk
+
+    lc_base._convert_delta_to_message_chunk = _with_reasoning
+    lc_base._myharness_reasoning_patched = True
+
+
+_patch_lc_reasoning()
+
+
 def to_lc_messages(messages: list[Message]) -> list[Any]:
     import base64
 
@@ -126,6 +155,7 @@ class LangChainProvider(BaseProvider):
         model: str | None = None,
         on_delta: DeltaCallback | None = None,
         on_reason: DeltaCallback | None = None,
+        on_tool_stream=None,
     ) -> TurnResult:
         from langchain_core.messages import SystemMessage
 
@@ -168,8 +198,12 @@ class LangChainProvider(BaseProvider):
                     slot["id"] = t["id"]
                 if t.get("name"):
                     slot["name"] = t["name"]
+                    if on_tool_stream:  # 参数开始生成：先报一个空参卡片占位
+                        on_tool_stream(slot["id"] or f"call_{idx}", t["name"], "")
                 if t.get("args"):
                     slot["args"] += t["args"]
+                    if on_tool_stream and slot["name"]:
+                        on_tool_stream(slot["id"] or f"call_{idx}", slot["name"], slot["args"])
             if not tccs:
                 for i, tc in enumerate(getattr(chunk, "tool_calls", None) or []):
                     # 非流式形状（测试桩/部分供应商）：完整调用直接落位

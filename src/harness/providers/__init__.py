@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from ..core.messages import Message, ToolUseBlock, Usage
 
 DeltaCallback = Callable[[str], None]
+# 工具调用参数流式回调：(call_id, tool_name, 截至当前的原始参数 JSON 文本)——参数边生成边推送，UI 同步画出工具卡片
+ToolStreamCallback = Callable[[str, str, str], None]
 
 
 class TurnResult(BaseModel):
@@ -30,6 +32,7 @@ class BaseProvider(ABC):
         model: str | None = None,
         on_delta: DeltaCallback | None = None,
         on_reason: DeltaCallback | None = None,  # 推理内容（reasoning_content）增量，用于「正在思考」实时展示
+        on_tool_stream: ToolStreamCallback | None = None,  # 工具调用参数增量，用于工具卡片实时预览
     ) -> TurnResult: ...
 
 

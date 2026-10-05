@@ -51,3 +51,25 @@ def test_unknown_tool(tmp_path):
     reg = build_default_registry()
     r = asyncio.run(reg.execute("nope", {}, tool_use_id="t1", ctx=ctx_of(tmp_path)))
     assert r.is_error and "Unknown tool" in r.content
+
+
+def test_bash_streams_output_lines(tmp_path):
+    """bash 工具逐行读 stdout：完整结果不丢，ctx.on_output 逐行实时上报。"""
+    import asyncio
+    import sys
+
+    from harness.tools.builtin import _make_bash
+
+    seen: list[str] = []
+
+    async def main():
+        ctx = ToolContext(workspace_root=tmp_path, data_dir=tmp_path, on_output=seen.append)
+        cmd = "echo line1; echo line2" if sys.platform != "win32" else "echo line1; echo line2"
+        tool = _make_bash()
+        result = await tool({"command": cmd}, ctx)
+        return result
+
+    result = asyncio.run(main())
+    assert "line1" in result and "line2" in result
+    assert "exit_code=0" in result
+    assert "".join(seen).count("line") == 2  # 每行都实时上报过

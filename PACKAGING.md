@@ -48,12 +48,17 @@ pyinstaller --onefile --name harness-server \
 
 - 产物：`dist/harness-server.exe`（onefile，约 60-120MB，启动需 3-10 秒解压，属正常）；
 - `--collect-all litellm` 是必须的：litellm 用 importlib 动态加载各家 provider 子模块，静态分析收不齐；
-- 验证：
+- 验证（**必做**：构建期间源码还在改会打出半成品——version 与事件协议都可能是旧的）：
 
 ```bash
 ./dist/harness-server.exe --port 8123 &
-sleep 10 && curl http://127.0.0.1:8123/health    # 期望 {"status":"ok",...}
+sleep 10 && curl http://127.0.0.1:8123/health
+# 期望 {"status":"ok","version":"<与 apps/desktop/package.json 一致>",...}
+# version 不一致 = 产物过期，改完源码后重新执行本步
 ```
+
+> prepkg.cjs 会在 `packaging/dist/` 与根 `dist/` 里挑较新的产物，无需手动拷贝；
+> 也可以把根 `dist/harness-server.exe` 拷到 `packaging/dist/` 保持旧习惯。
 
 ## 第 2 步：打包 Windows 安装包
 

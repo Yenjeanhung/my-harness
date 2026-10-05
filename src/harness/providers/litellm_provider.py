@@ -45,6 +45,7 @@ class LiteLLMProvider(BaseProvider):
         model: str | None = None,
         on_delta: DeltaCallback | None = None,
         on_reason: DeltaCallback | None = None,
+        on_tool_stream=None,
     ) -> TurnResult:
         import litellm
 
@@ -116,8 +117,16 @@ class LiteLLMProvider(BaseProvider):
                 if fn is not None:
                     if fn.name:
                         slot["name"] = fn.name
+                        if on_tool_stream:  # 参数开始生成：先报一个空参卡片占位
+                            on_tool_stream(slot["id"] or f"call_{tc.index}", fn.name, "")
                     if fn.arguments:
                         slot["args"].append(fn.arguments)
+                        if on_tool_stream and slot["name"]:
+                            on_tool_stream(
+                                slot["id"] or f"call_{tc.index}",
+                                slot["name"],
+                                "".join(slot["args"]),
+                            )
             if choice.finish_reason:
                 stop_reason = choice.finish_reason
 

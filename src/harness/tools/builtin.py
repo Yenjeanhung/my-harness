@@ -59,17 +59,35 @@ def _make_bash(sandbox=None):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
+        # 逐行读 stdout 并经 ctx.on_output 实时上报（UI 工具卡片同步刷新），同时攒完整结果
+        sink = getattr(ctx, "on_output", None)
+        chunks: list[str] = []
+
+        async def _drain() -> int:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    return await proc.wait()
+                text_line = line.decode("utf-8", errors="replace")
+                chunks.append(text_line)
+                if sink:
+                    sink(text_line)
+
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            returncode = await asyncio.wait_for(_drain(), timeout=timeout)
         except TimeoutError:
             proc.kill()
-            return f"Command timed out after {timeout}s and was killed."
-        text = out.decode("utf-8", errors="replace")
+            partial = "".join(chunks)
+            return (
+                f"Command timed out after {timeout}s and was killed.\n"
+                + (f"[partial output]\n{partial[:30_000]}" if partial.strip() else "")
+            )
+        text = "".join(chunks)
         if len(text) > 30_000:
             text = text[:30_000] + "\n[output truncated]"
         if not text.strip():
             text = "[empty output]\n"
-        return f"exit_code={proc.returncode}\n{text}"
+        return f"exit_code={returncode}\n{text}"
 
     return _bash
 

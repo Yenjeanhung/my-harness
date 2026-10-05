@@ -15,7 +15,7 @@ from ..core.events import EventType
 from ..core.messages import Message, TextBlock, ToolResultBlock, Usage
 from ..providers import BaseProvider, DeltaCallback
 from ..tools.base import ToolContext, ToolRegistry
-from .react import SYSTEM_TEMPLATE, Budget, NoticeCallback, _finish
+from .react import SYSTEM_TEMPLATE, Budget, NoticeCallback, ToolArgsCallback, ToolOutputCallback, _accepts, _finish
 
 
 class LangGraphLoop:
@@ -84,9 +84,14 @@ class LangGraphLoop:
 
         system = self.system + render_blocks_suffix(getattr(self.ctx, "blocks", None))
 
-        # on_reason 只在调用方需要时传（兼容不接受该参数的 duck-typed 测试桩）
+        # on_reason/on_tool_stream 只在调用方需要且 provider 支持时传（兼容 duck-typed 测试桩）
         cb_reason = self._cbs.get("on_reason")
-        chat_kwargs = {"on_reason": cb_reason} if cb_reason else {}
+        cb_args = self._cbs.get("on_tool_args")
+        chat_kwargs = {}
+        if cb_reason is not None and _accepts(self.provider.chat, "on_reason"):
+            chat_kwargs["on_reason"] = cb_reason
+        if cb_args is not None and _accepts(self.provider.chat, "on_tool_stream"):
+            chat_kwargs["on_tool_stream"] = cb_args
         result = await self.provider.chat(
             system=system,
             messages=session.messages(),
@@ -95,6 +100,9 @@ class LangGraphLoop:
             **chat_kwargs,
         )
         budget.usage.add(result.usage)
+        cb_usage = self._cbs.get("on_usage")
+        if cb_usage:
+            cb_usage(budget.usage)  # 每轮模型返回后推送累计用量，UI 实时显示
         if self.context_engine:
             s["last_input"] = (
                 result.usage.input_tokens
@@ -167,7 +175,15 @@ class LangGraphLoop:
             )
         if self.shadow and tu.name in self.SNAPSHOT_TOOLS and tu.input.get("path"):
             self.shadow.snapshot([tu.input["path"]], label=tu.name)
-        tr = await self.registry.execute(tu.name, tu.input, tool_use_id=tu.id, ctx=self.ctx)
+        # 过程输出挂到 ctx 上（bash 逐行上报）；子代理拿的是 ctx 副本，互不干扰
+        on_tool_output = self._cbs.get("on_tool_output")
+        prev_sink = getattr(self.ctx, "on_output", None)
+        if on_tool_output is not None:
+            self.ctx.on_output = lambda text, _tu=tu: on_tool_output(_tu, text)
+        try:
+            tr = await self.registry.execute(tu.name, tu.input, tool_use_id=tu.id, ctx=self.ctx)
+        finally:
+            self.ctx.on_output = prev_sink
         if self.context_engine and len(tr.content) > self.context_engine.offload_threshold:
             tr.content = self.context_engine.offload_result(session.id, tr.content)
         if self.hooks:
@@ -186,6 +202,9 @@ class LangGraphLoop:
         on_notice: NoticeCallback | None = None,
         images: list[dict] | None = None,
         on_reason: DeltaCallback | None = None,
+        on_tool_args: ToolArgsCallback | None = None,
+        on_tool_output: ToolOutputCallback | None = None,
+        on_usage: Callable[[Usage], None] | None = None,
     ) -> str:
         budget = budget or Budget()
         self.current_budget = budget
@@ -196,6 +215,9 @@ class LangGraphLoop:
             "on_tool_result": on_tool_result,
             "on_notice": on_notice,
             "on_reason": on_reason,
+            "on_tool_args": on_tool_args,
+            "on_tool_output": on_tool_output,
+            "on_usage": on_usage,
         }
         self._state = {"turns": 0, "last_input": 0, "tool_executed": False, "final": None}
         session.store.append(session.id, EventType.RUN_STARTED, {"task": task})

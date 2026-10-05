@@ -23,7 +23,11 @@ def _app(tmp_path, mode="bypass", provider_factory=None):
 
 def test_health(tmp_path):
     client = TestClient(_app(tmp_path))
-    assert client.get("/health").json()["status"] == "ok"
+    h = client.get("/health").json()
+    assert h["status"] == "ok"
+    # 桌面端握手依赖：version 决定是否替换旧 daemon，workspace 决定切项目是否需要重启
+    assert h["version"]
+    assert h["workspace"] == str(tmp_path)
 
 
 def test_ws_e2e_session_and_run(tmp_path):
@@ -451,3 +455,132 @@ def test_ws_fork_session(tmp_path):
         ws.send_json({"type": "GetSessionCost", "session_id": fork_row["session_id"]})
         c = ws.receive_json()
         assert c["type"] == "SessionCost" and c["turns"] == 0
+
+
+def _stream_registry():
+    """只含一个流式输出工具的注册表：执行期经 ctx.on_output 逐行上报。"""
+    from harness.tools.base import Tool, ToolRegistry, ToolSpec
+
+    reg = ToolRegistry()
+
+    async def handler(args, ctx):
+        if ctx.on_output:
+            ctx.on_output("step 1 done\n")
+            ctx.on_output("step 2 done\n")
+        return "ok"
+
+    reg.register(
+        Tool(ToolSpec(name="slow_tool", description="streams progress", parameters={"type": "object", "properties": {}}), handler)
+    )
+    return reg
+
+
+def test_ws_tool_output_streamed(tmp_path):
+    """工具执行期过程输出：ctx.on_output → ToolCallOutput 逐行外送，call_id 与卡片关联。"""
+    from harness.core.messages import ToolUseBlock
+
+    class ToolProvider:
+        def __init__(self):
+            self.i = 0
+
+        async def chat(self, *, system, messages, tools, model=None, on_delta=None, on_reason=None):
+            self.i += 1
+            if self.i == 1:
+                return TurnResult(text="", tool_uses=[ToolUseBlock(id="call_1", name="slow_tool", input={})])
+            return TurnResult(text="done")
+
+    cfg = Config(data_dir=tmp_path, workspace=tmp_path, permissions_mode="bypass")
+    app = create_app(cfg, provider_factory=lambda: ToolProvider(), registry=_stream_registry())
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "go"})
+        started, outputs = None, []
+        while True:
+            e = ws.receive_json()
+            if e["type"] == "ToolCallStarted":
+                started = e
+            elif e["type"] == "ToolCallOutput":
+                outputs.append(e)
+            elif e["type"] in ("RunFinished", "Error"):
+                break
+        assert started and started["call_id"] == "call_1"
+        assert [o["text"] for o in outputs] == ["step 1 done\n", "step 2 done\n"]
+        assert all(o["call_id"] == "call_1" for o in outputs)
+
+
+def test_ws_tool_args_streamed(tmp_path):
+    """参数流式：provider 支持时参数边生成边推送 ToolCallArgs，且先于 ToolCallStarted。"""
+    from harness.core.messages import ToolUseBlock
+
+    class ArgsStreamProvider:
+        def __init__(self):
+            self.i = 0
+
+        async def chat(self, *, system, messages, tools, model=None, on_delta=None, on_reason=None, on_tool_stream=None):
+            self.i += 1
+            if self.i == 1 and on_tool_stream:
+                on_tool_stream("call_9", "slow_tool", "")
+                on_tool_stream("call_9", "slow_tool", '{"q": 1}')
+                return TurnResult(text="", tool_uses=[ToolUseBlock(id="call_9", name="slow_tool", input={"q": 1})])
+            return TurnResult(text="done")
+
+    cfg = Config(data_dir=tmp_path, workspace=tmp_path, permissions_mode="bypass")
+    app = create_app(cfg, provider_factory=lambda: ArgsStreamProvider(), registry=_stream_registry())
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "go"})
+        types = []
+        while True:
+            e = ws.receive_json()
+            types.append(e["type"])
+            if e["type"] == "ToolCallStarted":
+                assert e["call_id"] == "call_9"
+            if e["type"] in ("RunFinished", "Error"):
+                break
+        assert "ToolCallArgs" in types
+        assert types.index("ToolCallArgs") < types.index("ToolCallStarted")
+
+
+def test_ws_tool_output_absent_for_plain_provider(tmp_path):
+    """旧 provider（不认识 on_tool_stream/on_output）：照常完成，不产生新事件。"""
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "hi"})
+        types = []
+        while True:
+            e = ws.receive_json()
+            types.append(e["type"])
+            if e["type"] in ("RunFinished", "Error"):
+                break
+        assert types[-1] == "RunFinished"
+        assert "ToolCallArgs" not in types and "ToolCallOutput" not in types
+
+
+def test_ws_usage_streamed(tmp_path):
+    """Usage 事件：每轮模型返回后推送本 run 累计 token（前端顶栏实时显示会话用量）。"""
+    from harness.core.messages import Usage as UsageModel
+
+    class UsageProvider:
+        async def chat(self, *, system, messages, tools, model=None, on_delta=None, on_reason=None):
+            return TurnResult(text="ok", usage=UsageModel(input_tokens=10, output_tokens=5))
+
+    client = TestClient(_app(tmp_path, provider_factory=lambda: UsageProvider()))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        sid = ws.receive_json()["session_id"]
+        ws.send_json({"type": "SendMessage", "session_id": sid, "text": "hi"})
+        usages = []
+        while True:
+            e = ws.receive_json()
+            if e["type"] == "Usage":
+                usages.append(e)
+            elif e["type"] in ("RunFinished", "Error"):
+                break
+        assert usages and usages[-1]["input_tokens"] == 10 and usages[-1]["output_tokens"] == 5
+        assert usages[-1]["session_id"] == sid

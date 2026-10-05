@@ -74,6 +74,8 @@ const THINKING_LABELS: Record<ThinkLevel, string> = { off: "关", low: "低", hi
 
 let ws: WebSocket | null = null;
 let nextId = 1;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let closingForGood = false; // 页面卸载主动关闭：不再重连
 
 // 唯一的消息出口：命令类型不对编译不过，ws 未连接时静默丢弃
 function sendCmd(cmd: WsCommand) {
@@ -226,6 +228,25 @@ const ICON_PATHS = {
 
 type IconName = keyof typeof ICON_PATHS;
 
+// 思考活动行：默认折叠「思考 · 持续了 N 秒」，有全文时点击展开（ZCode 式 thoughts 折叠条）
+function ThinkRow({ it }: { it: ThinkItem }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="act-think-wrap">
+      <div
+        className={"act-think" + (it.text ? " clickable" : "")}
+        onClick={() => it.text && setOpen((o) => !o)}
+        title={it.text ? (open ? "收起思考内容" : "展开思考内容") : ""}
+      >
+        <Icon name="cpu" size={12} />
+        思考{it.secs ? ` · 持续了 ${it.secs} 秒` : ""}
+        {it.text ? <span className="think-chev">{open ? "▾" : "▸"}</span> : null}
+      </div>
+      {open && it.text ? <pre className="think-full">{it.text}</pre> : null}
+    </div>
+  );
+}
+
 function Icon({ name, size = 13, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
   return (
     <svg
@@ -340,7 +361,11 @@ interface ToolItem {
   text?: string;
   tool: string;
   args?: string;
-  status?: "running" | "done" | "fail";
+  callId?: string; // 服务端 tool_use id：参数流式(ToolCallArgs)/执行输出(ToolCallOutput)都按它归位到同一张卡片
+  argsRaw?: string; // 参数还在生成时的原始 JSON 文本（流式预览）
+  output?: string; // 执行期过程输出尾部（bash 逐行上报，只保留末尾几百字符）
+  startedAt?: number; // 首次出现时刻：running/streaming 状态下据此显示已运行秒数
+  status?: "streaming" | "running" | "done" | "stopped" | "fail";
   detail?: string;
   meta?: ToolMeta;
 }
@@ -348,7 +373,7 @@ interface ThinkItem {
   id: number;
   kind: "think";
   secs?: number;
-  text?: string;
+  text?: string; // 完整推理内容：默认折叠一行，点击展开
 }
 interface NoticeItem {
   id: number;
@@ -407,6 +432,11 @@ function App() {
   const [moveSession, setMoveSession] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [groupBy, setGroupBy] = useState<"date" | "group">("date"); // date | topic | group
+  const [sideTab, setSideTab] = useState<"sessions" | "projects">("sessions"); // 侧栏第三个 tab：项目
+  const [projects, setProjects] = useState<{ current: string | null; recent: string[] }>({
+    current: null,
+    recent: [],
+  });
   const [contentResults, setContentResults] = useState<ContentResult[]>([]);
   const [searchQ, setSearchQ] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
@@ -427,6 +457,7 @@ function App() {
   const [elapsed, setElapsed] = useState(0);
   const [firstToken, setFirstToken] = useState(false); // 本轮是否已收到首 token
   const [reason, setReason] = useState(""); // 当前轮推理增量（保留末 400 字符，ZCode 式正在思考）
+  const [reasonFull, setReasonFull] = useState(""); // 本轮完整推理全文：思考区实时流式显示（ZCode 式）
   const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
   const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
   const [outlineTip, setOutlineTip] = useState<{ text: string; top: number } | null>(null); // 左侧消息导航悬浮预览
@@ -436,7 +467,8 @@ function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [onboard, setOnboard] = useState(true); // 首启引导：模型列表为空时全屏展示
   const [testState, setTestState] = useState<TestState | null>(null); // TestModel 结果
-  const [sessCost, setSessCost] = useState<SessionCostData | null>(null); // 当前会话累计
+  const [sessCost, setSessCost] = useState<SessionCostData | null>(null); // 当前会话累计（落库部分，RunFinished 后刷新）
+  const [runUsage, setRunUsage] = useState<{ input_tokens: number; output_tokens: number } | null>(null); // 进行中 run 的实时累计
   const [stats, setStats] = useState<StatsState | null>(null); // GetStats 结果（设置页「常规」）
   const [memory, setMemory] = useState<{ blocks: MemBlock[]; files: MemFile[] }>({ blocks: [], files: [] });
   const [memFile, setMemFile] = useState<{ path: string; content: string } | null>(null);
@@ -453,7 +485,9 @@ function App() {
   const viewRef = useRef<"chat" | "settings">("chat");
   const roundStart = useRef(0); // 当前思考轮起点（思考·持续了 N 秒）
   const thinkPushed = useRef(true);
-  const reasonRef = useRef("");
+  const reasonRef = useRef(""); // 尾部 400 字符滚动窗口（正在思考指示行）
+  const fullReasonRef = useRef(""); // 本轮完整推理内容（落进「思考」折叠条，不截断）
+  const liveThinkRef = useRef<HTMLDivElement | null>(null); // 实时思考块：新内容到底部跟随
   const queueRef = useRef<QueueItem[]>([]);
   const runningRef = useRef(false);
   useEffect(() => { connRef.current = conn; }, [conn]);
@@ -477,28 +511,31 @@ function App() {
       return next;
     });
 
-  // 本轮思考结束（首个正文 token / 工具调用开始）→ 落一条「思考 · 持续了 N 秒」活动行
+  // 本轮思考结束（首个正文 token / 工具参数开始生成 / 工具调用开始）→ 落一条「思考 · 持续了 N 秒」活动行（全文可展开）
   const pushThinkRow = () => {
     if (thinkPushed.current) return;
     thinkPushed.current = true;
     const secs = Math.round((Date.now() - roundStart.current) / 1000);
-    const txt = reasonRef.current;
-    if (secs >= 1 || txt) addItem({ kind: "think", secs, text: txt ? txt.slice(-160) : "" });
+    const txt = fullReasonRef.current;
+    if (secs >= 1 || txt) addItem({ kind: "think", secs, text: txt });
   };
-  // run 结束/被停止：所有还在 running 的工具卡片标记为已停止
+  // run 结束/被停止：所有还在生成/运行中的工具卡片标记为已停止
   const markRunEnded = () => {
     reasonRef.current = "";
+    fullReasonRef.current = "";
     setReason("");
+    setReasonFull("");
     setItems((prev) =>
       prev.map((it): ChatItem =>
-        it.kind === "tool" && it.status === "running"
-          ? { ...it, status: "fail", detail: "已停止" }
+        it.kind === "tool" && (it.status === "running" || it.status === "streaming")
+          ? { ...it, status: "stopped" }
           : it
       )
     );
   };
   // 实际发送（composed=附件拼好的文本；队列回放时用入队时拼好的版本）
   const sendNow = (text: string, composed: string, imgs: Img[]) => {
+    pinnedRef.current = true; // 队列自动补发同样贴底
     addItem({ kind: "user", text, images: imgs.length ? imgs : undefined });
     sendCmd({
       type: "SendMessage",
@@ -525,15 +562,36 @@ function App() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [permOpen]);
 
+  // 断线自动重连：daemon 重启（切项目）/ 崩溃 / 未就绪时每 2s 重试，连上即恢复
+  const scheduleReconnect = () => {
+    if (closingForGood || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (closingForGood || connRef.current === "open") return;
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+      connect();
+    }, 2000);
+  };
+
   const connect = () => {
     setConn("connecting");
+    closingForGood = false;
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
       setConn("open");
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       sendCmd({ type: "ListSessions" }); // 由 SessionList 决定恢复最近会话或新建
       sendCmd({ type: "GetSettings" });
+      // 重连场景：daemon 可能重启过（内存会话已丢），重新挂载当前会话，服务端回放 History 重建界面
+      if (sessionIdRef.current) sendCmd({ type: "ResumeSession", session_id: sessionIdRef.current });
     };
-    ws.onclose = () => setConn("closed");
+    ws.onclose = () => {
+      setConn("closed");
+      scheduleReconnect();
+    };
     ws.onerror = () => setConn("closed");
     ws.onmessage = (ev) => {
       const e = JSON.parse(ev.data) as WsEvent;
@@ -547,6 +605,13 @@ function App() {
           assistantBuf.current = null;
           setRunning(false);
           setSessCost(null);
+          setRunUsage(null);
+          // 新会话没有 History 事件回放，必须主动清场，否则正文/排队消息还挂在旧会话上
+          setItems([]);
+          setQueue([]);
+          setReason("");
+          reasonRef.current = "";
+          setReasonFull("");
           break;
         case "SessionResumed":
           setSessionId(e.session_id);
@@ -556,7 +621,11 @@ function App() {
           assistantBuf.current = null;
           setRunning(false);
           setSessCost(null);
+          setRunUsage(null);
+          setQueue([]); // 排队消息属于旧会话，切走后不再回放
           sendCmd({ type: "GetSessionCost", session_id: e.session_id });
+          // 分支/恢复会话后刷侧栏：fork 出的新会话立即可见，不用等首轮跑完
+          sendCmd({ type: "ListSessions" });
           break;
         case "ContentSearchResult":
           setContentResults(e.results || []);
@@ -653,14 +722,26 @@ function App() {
           setFirstToken(false);
           setReason("");
           reasonRef.current = "";
+          fullReasonRef.current = "";
+          setReasonFull("");
+          setRunUsage(null); // 本 run 的实时用量从零起算（顶栏会话 token = 已落库累计 + 本 run 实时）
           roundStart.current = Date.now();
           thinkPushed.current = false;
           runStart.current = Date.now();
           setElapsed(0);
+          // 首条消息此刻已落库：立刻刷侧栏，新会话不用等 RunFinished 才出现
+          sendCmd({ type: "ListSessions" });
+          break;
+        case "Usage":
+          // 每轮模型返回后的本 run 累计 token：顶栏会话用量实时跳动
+          if (!e.session_id || e.session_id === sessionIdRef.current)
+            setRunUsage({ input_tokens: e.input_tokens, output_tokens: e.output_tokens });
           break;
         case "ReasoningDelta":
+          fullReasonRef.current += e.text;
           reasonRef.current = (reasonRef.current + e.text).slice(-400);
           setReason((r) => (r + e.text).slice(-400));
+          setReasonFull((f) => f + e.text); // 思考区实时全文
           break;
         case "TokenDelta":
           setFirstToken(true);
@@ -671,32 +752,109 @@ function App() {
           }
           patchLastAssistant((it) => ({ text: (it.text || "") + e.text }));
           break;
+        case "ToolCallArgs":
+          // 参数边生成边显示（ZCode 式）：卡片在模型还在写参数时就出现，argsRaw 逐段替换
+          pushThinkRow();
+          setItems((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              const it = next[i];
+              if (it.kind === "tool" && it.callId === e.call_id && (it.status === "streaming" || it.status === "running")) {
+                next[i] = { ...it, tool: e.tool, argsRaw: e.args_text };
+                return next;
+              }
+            }
+            return [
+              ...next,
+              {
+                id: nextId++,
+                kind: "tool",
+                tool: e.tool,
+                callId: e.call_id,
+                argsRaw: e.args_text,
+                status: "streaming",
+                startedAt: Date.now(),
+                meta: describeTool(e.tool),
+              } as ChatItem,
+            ];
+          });
+          break;
         case "ToolCallStarted":
           assistantBuf.current = null;
           pushThinkRow();
-          addItem({
-            kind: "tool",
-            tool: e.tool,
-            args: JSON.stringify(e.args),
-            status: "running",
-            meta: describeTool(e.tool, e.args),
+          setItems((prev) => {
+            const next = [...prev];
+            // 参数流式阶段已建卡：就地补全最终参数；否则新建（非流式 provider/旧 daemon）
+            for (let i = next.length - 1; i >= 0; i--) {
+              const it = next[i];
+              if (
+                it.kind === "tool" &&
+                e.call_id &&
+                it.callId === e.call_id &&
+                (it.status === "streaming" || it.status === "running")
+              ) {
+                next[i] = {
+                  ...it,
+                  tool: e.tool,
+                  args: JSON.stringify(e.args),
+                  argsRaw: undefined,
+                  status: "running",
+                  startedAt: it.startedAt || Date.now(),
+                  meta: describeTool(e.tool, e.args),
+                };
+                return next;
+              }
+            }
+            next.push({
+              id: nextId++,
+              kind: "tool",
+              tool: e.tool,
+              callId: e.call_id,
+              args: JSON.stringify(e.args),
+              status: "running",
+              startedAt: Date.now(),
+              meta: describeTool(e.tool, e.args),
+            } as ChatItem);
+            return next;
+          });
+          break;
+        case "ToolCallOutput":
+          // 工具执行期过程输出（bash 逐行）：只保留尾部几百字符，卡片实时滚动最后一行
+          setItems((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              const it = next[i];
+              if (it.kind === "tool" && it.callId === e.call_id && (it.status === "running" || it.status === "streaming")) {
+                next[i] = { ...it, output: ((it.output || "") + e.text).slice(-600) };
+                return next;
+              }
+            }
+            return next;
           });
           break;
         case "ToolCallResult":
           setFirstToken(false); // 工具跑完进入下一轮模型调用，重新进入等待
           setReason("");
           reasonRef.current = "";
+          fullReasonRef.current = "";
+          setReasonFull("");
           roundStart.current = Date.now();
           thinkPushed.current = false;
           setItems((prev) => {
             const next = [...prev];
             for (let i = next.length - 1; i >= 0; i--) {
               const it = next[i];
-              if (it.kind === "tool" && it.tool === e.tool && it.status === "running") {
+              // 优先按 call_id 归位；旧 daemon 无 call_id 时退回「最后一个同名 running 卡片」
+              if (
+                it.kind === "tool" &&
+                it.status === "running" &&
+                (e.call_id ? it.callId === e.call_id : it.tool === e.tool)
+              ) {
                 next[i] = {
                   ...it,
                   status: e.is_error ? "fail" : "done",
-                  detail: e.is_error ? "error" : `${e.chars} chars`,
+                  // 失败：状态行显示「执行失败」，具体原因进悬浮提示（服务端附 preview）
+                  detail: e.is_error ? e.preview || "执行失败" : `${e.chars} chars`,
                 };
                 break;
               }
@@ -706,7 +864,8 @@ function App() {
           break;
         case "Notice":
           assistantBuf.current = null;
-          addItem({ kind: "notice", text: e.text });
+          // 通知不再以胶囊进时间线（用户要求）：这些状态变化都有对应 UI
+          // （权限/思考档位→下拉高亮、停止→工具卡标「已停止」、MCP/记忆→设置页刷新）
           if (/run cancelled/.test(e.text)) {
             // 服务端确认任务已停止：复位运行态，排队的消息留在队列里等手动发送
             setRunning(false);
@@ -724,6 +883,7 @@ function App() {
         case "RunFinished":
           assistantBuf.current = null;
           setRunning(false);
+          setRunUsage(null); // GetSessionCost 回来的会话累计已包含本 run，实时增量清零防重复
           markRunEnded();
           patchLastAssistant((it) => ({
             duration_ms: e.duration_ms,
@@ -770,22 +930,45 @@ function App() {
   useEffect(() => {
     connect();
     return () => {
+      closingForGood = true; // 页面卸载：停止重连，避免定时器泄漏
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       ws?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [items.length, permission]);
-  // 流式期间只在用户本就在底部附近时才跟随滚动
+  // —— 跟随滚动（钉底模式）——
+  // pinned=用户钉在底部：内容增长就跟到底；自己上滚解除，滚回底部自动恢复。
+  // 不能用「距底部<60px 才跟随」判断：大表格/代码块一次渲染就把距离顶开，跟丢后只能手动滚。
+  const pinnedRef = useRef(true);
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [items]);
+    const onScroll = () => {
+      pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+    // reasonFull：思考阶段只有推理流式增长、items 不变，列表同样需要跟随
+  }, [items, reasonFull]);
+  // 换会话（History 回放）或审批卡片出现：无条件回到底部
+  useEffect(() => {
+    pinnedRef.current = true;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [sessionId, permission]);
+  // 实时思考块：新推理内容追加减渲染后贴到底部
+  useEffect(() => {
+    const el = liveThinkRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [reasonFull]);
 
   // 设置页数据拉取：进入面板或连接建立时拉取
   useEffect(() => {
@@ -844,8 +1027,10 @@ function App() {
     const text = input.trim();
     if (!text || connRef.current !== "open" || !sessionIdRef.current) return;
     const imgs: Img[] = pasteImages.map((p) => ({ media_type: p.media_type, data: p.data }));
+    pinnedRef.current = true; // 自己发的消息：无论如何都贴到底部看回显
     if (runningRef.current) {
-      // 任务运行中：入队等待，当前任务结束（RunFinished）后自动发出
+      // 任务运行中：入队等待，当前任务结束（RunFinished）后自动发出。
+      // 队列条显示在输入框上方（ZCode 式），不进消息时间线。
       setQueue((q) => [...q, { id: nextId++, text, composed: composeMessage(text), imgs }]);
     } else {
       sendNow(text, composeMessage(text), imgs);
@@ -884,13 +1069,22 @@ function App() {
     setCopiedId(it.id);
     setTimeout(() => setCopiedId((c) => (c === it.id ? null : c)), 1200);
   };
-  const queueBump = (id: number) =>
-    setQueue((q) => {
-      const idx = q.findIndex((x) => x.id === id);
-      if (idx <= 0) return q;
-      const item = q[idx];
-      return [item, ...q.filter((x) => x.id !== id)];
-    });
+  // 「立即」：没有任务在跑（如取消后的遗留队列）→ 直接发送；有任务在跑 → 插到队首，任务结束后第一个发出
+  const queueBump = (id: number) => {
+    const q = queueRef.current;
+    const item = q.find((x) => x.id === id);
+    if (!item) return;
+    if (runningRef.current) {
+      setQueue((prev) => {
+        const idx = prev.findIndex((x) => x.id === id);
+        if (idx <= 0) return prev;
+        return [prev[idx], ...prev.filter((x) => x.id !== id)];
+      });
+      return;
+    }
+    setQueue((prev) => prev.filter((x) => x.id !== id));
+    setTimeout(() => sendNow(item.text, item.composed, item.imgs || []), 50);
+  };
   const queueEdit = (qitem: QueueItem) => {
     setInput(qitem.text);
     setQueue((q) => q.filter((x) => x.id !== qitem.id));
@@ -912,6 +1106,32 @@ function App() {
     setView("chat");
     if (connRef.current === "open") sendCmd({ type: "ResumeSession", session_id: id });
   };
+
+  // —— 项目（工作区）——
+  // 切项目 = 主进程带 --workspace 重启 daemon，完成后 loadFile 重开页面；这里只做确认、反馈与触发
+  const [switching, setSwitching] = useState(false);
+  const switchProject = async (p: string) => {
+    if (runningRef.current && !confirm("当前任务运行中，切换项目会中断它。继续切换？")) return;
+    setSwitching(true); // daemon 重启期间连接会断开：遮罩提示，页面随后被主进程重开
+    try {
+      const r = await window.myharness?.openProject?.(p);
+      setSwitching(false);
+      if (r === "invalid") addItem({ kind: "error", text: `打开项目失败：目录无效（${p}）` });
+      else if (r === "unavailable")
+        addItem({ kind: "error", text: "daemon 重启失败：请确认 harness 在 PATH 中，或重新打包内嵌 sidecar。" });
+    } catch {
+      setSwitching(false); // 页面重开竞态下 promise 被打断属正常
+    }
+  };
+  const pickProject = async () => {
+    const p = await window.myharness?.pickFolder?.();
+    if (p) switchProject(p);
+  };
+  // 进入项目 tab 时拉取最近项目列表
+  useEffect(() => {
+    if (sideTab !== "projects") return;
+    window.myharness?.getProjects?.().then(setProjects).catch(() => {});
+  }, [sideTab]);
 
   const pickProvider = (key: string) =>
     setModelForm((f) => ({ ...f, provider: key, api_base: f.api_base || PROVIDER_BASES[key] || "" }));
@@ -966,6 +1186,8 @@ function App() {
   const dot = conn === "open" ? "ok" : conn === "connecting" ? "" : "bad";
   const stateText = STATE_TEXT[SERVER_STATE] || "";
   const currentModel = settings.model || "(默认)";
+  // 界面展示只取模型名（zhipuai/glm-5.3-flash → glm-5.3-flash）；存储与 SetModel 仍用完整串
+  const shortModel = (m: string) => m.split("/").pop() || m;
   const currentSession = (sessions || []).find((s) => s.session_id === sessionId);
   const currentTitle = currentSession?.title || (sessionId ? `新会话 ${sessionId.slice(0, 6)}` : "未开始");
   // 左侧消息导航（ZCode 式 outline）：用户/助手消息各一条，宽度随内容长度
@@ -1258,18 +1480,81 @@ function App() {
     <div className="app">
       <aside>
         <button className="newbtn" onClick={newSession} disabled={conn !== "open"}>＋ 新建会话</button>
-        <input
-          className="search"
-          placeholder="搜索会话标题与内容…"
-          value={searchQ}
-          onChange={(e) => setSearchQ(e.target.value)}
-        />
-        <h3>会话</h3>
+        {sideTab === "sessions" && (
+          <input
+            className="search"
+            placeholder="搜索会话标题与内容…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+          />
+        )}
+        {sideTab === "sessions" && <h3>会话</h3>}
         <div className="seg">
-          <button className={groupBy === "date" ? "on" : ""} onClick={() => setGroupBy("date")}>时间</button>
-          <button className={groupBy === "group" ? "on" : ""} onClick={() => setGroupBy("group")}>分组</button>
+          <button
+            className={sideTab === "sessions" && groupBy === "date" ? "on" : ""}
+            onClick={() => {
+              setSideTab("sessions");
+              setGroupBy("date");
+            }}
+          >
+            时间
+          </button>
+          <button
+            className={sideTab === "sessions" && groupBy === "group" ? "on" : ""}
+            onClick={() => {
+              setSideTab("sessions");
+              setGroupBy("group");
+            }}
+          >
+            分组
+          </button>
+          <button className={sideTab === "projects" ? "on" : ""} onClick={() => setSideTab("projects")}>
+            项目
+          </button>
         </div>
-        {groupBy === "group" && (
+        {sideTab === "projects" && (
+          <div className="proj-pane">
+            <div className="proj-card">
+              <div className="proj-label">当前项目</div>
+              <div className="proj-path" title={projects.current || ""}>
+                {projects.current ? projects.current.split(/[\\/]/).filter(Boolean).pop() : "默认目录"}
+              </div>
+              <div className="proj-full" title={projects.current || ""}>
+                {projects.current || "未选择项目，daemon 以启动目录为工作区"}
+              </div>
+            </div>
+            <button
+              className="newbtn"
+              style={{ marginTop: 10 }}
+              onClick={pickProject}
+              disabled={!window.myharness || switching}
+              title={window.myharness ? "选择一个本地文件夹作为项目工作区" : "仅桌面端可用"}
+            >
+              {switching ? "切换中…" : "打开文件夹…"}
+            </button>
+            {projects.recent.length > 0 && <h3 style={{ marginTop: 14 }}>最近项目</h3>}
+            {projects.recent.map((p) => (
+              <div
+                key={p}
+                className={"sess" + (p === projects.current ? " active" : "")}
+                onClick={() => switchProject(p)}
+                title={p}
+              >
+                <div className="sinfo">
+                  <div className="stitle proj-name">
+                    <Icon name="folder" size={12} />
+                    {p.split(/[\\/]/).filter(Boolean).pop()}
+                  </div>
+                  <div className="smeta">{p}</div>
+                </div>
+              </div>
+            ))}
+            <div className="proj-hint">
+              切换项目会重启本地 daemon。每个项目有独立的记忆库与 AGENT.md；会话仍全局保留。
+            </div>
+          </div>
+        )}
+        {sideTab === "sessions" && groupBy === "group" && (
           <>
             <button className="newbtn" style={{ marginTop: 8 }} onClick={() => setShowGroupInput((s) => !s)}>
               ＋ 新建分组
@@ -1295,7 +1580,7 @@ function App() {
             )}
           </>
         )}
-        {searchQ.trim() && contentResults.length > 0 && (
+        {sideTab === "sessions" && searchQ.trim() && contentResults.length > 0 && (
           <>
             <div className="ghead" style={{ cursor: "default" }}>
               <span>🔍 内容匹配</span>
@@ -1316,8 +1601,9 @@ function App() {
             ))}
           </>
         )}
-        {(() => {
-          const q = searchQ.trim().toLowerCase();
+        {sideTab === "sessions" &&
+          (() => {
+            const q = searchQ.trim().toLowerCase();
           const filtered = q
             ? (sessions || []).filter(
                 (s) =>
@@ -1425,6 +1711,18 @@ function App() {
             </div>
           );
 
+          // 新建的会话还没有任何事件，服务端列表（events 表派生）里不存在：
+          // 乐观显示一行，首条消息落库后 RunStarted→ListSessions 用服务器数据接管
+          const provisionalRow =
+            sessionId && !q && !(sessions || []).some((s) => s.session_id === sessionId)
+              ? sessionRow({
+                  session_id: sessionId,
+                  title: "新会话",
+                  last_active: new Date().toISOString(),
+                  events: 0,
+                })
+              : null;
+
           // 手动分组模式：自定义分组 + 拖拽/菜单移动 + 未分组区
           if (groupBy === "group") {
             const grouped = filtered.filter((s) => s.group);
@@ -1498,6 +1796,7 @@ function App() {
             );
             return (
               <>
+                {provisionalRow}
                 {sessionGroups.map((gname) =>
                   groupBlock(gname, grouped.filter((s) => s.group === gname), "拖拽会话到这里")
                 )}
@@ -1507,18 +1806,23 @@ function App() {
           }
 
           // 时间自动分组模式
-          return groupSessions(filtered).map((g) => (
-            <div key={g.key}>
-              <div
-                className="ghead"
-                onClick={() => setCollapsedGroups((c) => ({ ...c, [g.key]: !c[g.key] }))}
-              >
-                <span>{collapsedGroups[g.key] ? "▸" : "▾"} {g.label}</span>
-                <span>{g.items.length}</span>
-              </div>
-              {!collapsedGroups[g.key] && g.items.map(sessionRow)}
-            </div>
-          ));
+          return (
+            <>
+              {provisionalRow}
+              {groupSessions(filtered).map((g) => (
+                <div key={g.key}>
+                  <div
+                    className="ghead"
+                    onClick={() => setCollapsedGroups((c) => ({ ...c, [g.key]: !c[g.key] }))}
+                  >
+                    <span>{collapsedGroups[g.key] ? "▸" : "▾"} {g.label}</span>
+                    <span>{g.items.length}</span>
+                  </div>
+                  {!collapsedGroups[g.key] && g.items.map(sessionRow)}
+                </div>
+              ))}
+            </>
+          );
         })()}
         <div className="aside-footer">
           <div className="avatar">本</div>
@@ -1530,29 +1834,18 @@ function App() {
         </div>
       </aside>
       <div className="main">
-        {queue.map((q) => (
-          <div key={q.id} className="queue-row">
-            <div className="qtext" title={q.text}>{q.text}</div>
-            <button className="qbtn primary" title="插到队首，当前任务结束后立即发送" onClick={() => queueBump(q.id)}>
-              ↑ 立即
-            </button>
-            <button className="qbtn" title="改回输入框" onClick={() => queueEdit(q)}>
-              <Icon name="edit" size={12} />
-            </button>
-            <button className="qbtn" title="移除" onClick={() => queueDelete(q.id)}>
-              <Icon name="x" size={12} />
-            </button>
-          </div>
-        ))}
         <header>
           <span className={"dot " + dot} />
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
           <span className="meta">
-            {conn} · {currentModel}
+            {conn} · {shortModel(currentModel)}
             {running ? ` · ⏱ ${elapsed.toFixed(1)}s` : ""}
-            {sessCost ? ` · 会话 ↑${fmtTok(sessCost.input_tokens)} ↓${fmtTok(sessCost.output_tokens)} tok` : ""}
+            {sessCost || runUsage
+              ? ` · 会话 ↑${fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓${fmtTok(
+                  (sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0)
+                )} tok`
+              : ""}
             {sessCost?.cost_usd != null ? ` · ${fmtCost(sessCost.cost_usd)}` : ""}
-            {stateText ? ` · ${stateText}` : ""}
           </span>
         </header>
         {outlineItems.length > 1 && (
@@ -1581,28 +1874,59 @@ function App() {
         <div id="msgs" ref={listRef} className={outlineItems.length > 1 ? "with-nav" : ""}>
           {items.map((it) => {
             if (it.kind === "think") {
-              return (
-                <div key={it.id} className="act-think" title={it.text || ""}>
-                  <Icon name="cpu" size={12} />
-                  思考{it.secs ? ` · 持续了 ${it.secs} 秒` : ""}
-                </div>
-              );
+              return <ThinkRow key={it.id} it={it} />;
             }
             if (it.kind === "tool") {
               const m = it.meta;
+              const live = it.status === "running" || it.status === "streaming";
+              const secs = live && it.startedAt ? Math.floor((Date.now() - it.startedAt) / 1000) : null;
+              const outLine = it.output ? it.output.trimEnd().split("\n").pop() || "" : "";
+              const preview = it.status === "streaming" && it.argsRaw ? it.argsRaw.slice(-140) : "";
               return (
                 <div
                   key={it.id}
-                  className={"tool " + (it.status === "done" ? "done" : it.status === "fail" ? "fail" : "")}
-                  title={it.args || it.tool}
+                  className={
+                    "tool " +
+                    (it.status === "done"
+                      ? "done"
+                      : it.status === "fail"
+                        ? "fail"
+                        : it.status === "stopped"
+                          ? "stopped"
+                          : live
+                            ? "live"
+                            : "")
+                  }
+                  title={(it.args || it.argsRaw || it.tool) + (it.status === "fail" && it.detail ? `\n——\n${it.detail}` : "")}
                 >
                   <span className="ticon"><Icon name={m?.icon || "zap"} size={12} /></span>
                   <span className="tverb">{m?.verb || it.tool}</span>
-                  {m?.target ? <span className="ttarget">{m.target}</span> : null}
-                  {m?.add != null ? <span className="tadd">+{m.add}</span> : null}
-                  <span className="tstatus">
-                    {it.status === "running" ? "…running" : it.status === "done" ? "✓" : `✗ ${it.detail || ""}`}
+                  {it.status === "streaming" ? (
+                    preview ? <span className="ttarget raw">{preview}</span> : null
+                  ) : (
+                    <>
+                      {m?.target ? <span className="ttarget">{m.target}</span> : null}
+                      {m?.add != null ? <span className="tadd">+{m.add}</span> : null}
+                    </>
+                  )}
+                  <span className={"tstatus" + (it.status === "stopped" ? " stopped" : it.status === "fail" ? " fail" : "")}>
+                    {live ? <span className="spin" /> : null}
+                    {it.status === "streaming"
+                      ? "生成中"
+                      : it.status === "running"
+                        ? "running"
+                        : it.status === "done"
+                          ? "✓"
+                          : it.status === "stopped"
+                            ? "已停止"
+                            : "执行失败"}
+                    {secs != null ? ` ${secs}s` : ""}
                   </span>
+                  {live && outLine ? (
+                    <div className="tout" title={it.output}>
+                      {outLine.slice(-160)}
+                    </div>
+                  ) : null}
                 </div>
               );
             }
@@ -1669,15 +1993,16 @@ function App() {
           })}
           {running && !firstToken && (
             <div className="working">
-              <div className="working-head">工作中 {elapsed.toFixed(0)} 秒</div>
-              <div className="thinking-line">
+              <div className="working-head">
                 <span className="spin" />
-                {reason ? (
-                  <span className="reason" title={reason}>正在思考 · {reason}</span>
-                ) : (
-                  "思考中…"
-                )}
+                {reasonFull ? `思考中 · ${elapsed.toFixed(0)} 秒` : `工作中 ${elapsed.toFixed(0)} 秒`}
               </div>
+              {reasonFull ? (
+                // ZCode 式实时思考区：推理全文流式滚动，本轮结束后落成可展开的「思考」折叠条
+                <div className="think-live" ref={liveThinkRef}>
+                  <pre>{reasonFull}</pre>
+                </div>
+              ) : null}
             </div>
           )}
           {permission && (
@@ -1695,6 +2020,25 @@ function App() {
             </div>
           )}
         </div>
+        {/* 排队中的消息悬停在输入框上方（ZCode 式）：↑立即=空闲直接发/运行中插队首 / 编辑 / 移除 */}
+        {queue.map((q) => (
+          <div key={q.id} className="queue-row">
+            <div className="qtext" title={q.text}>{q.text}</div>
+            <button
+              className="qbtn primary"
+              title={running ? "插到队首，当前任务结束后第一个发送" : "立即发送这条消息"}
+              onClick={() => queueBump(q.id)}
+            >
+              ↑ 立即
+            </button>
+            <button className="qbtn" title="改回输入框" onClick={() => queueEdit(q)}>
+              <Icon name="edit" size={12} />
+            </button>
+            <button className="qbtn" title="移除" onClick={() => queueDelete(q.id)}>
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        ))}
         <div className="composer">
           {pasteImages.length > 0 && (
             <div className="atchips">
@@ -1807,18 +2151,29 @@ function App() {
               }}
             >
               {(settings.models?.length ? settings.models.map((m) => m.model) : [settings.model]).map((m) => (
-                <option key={m} value={m}>{m}{m === settings.model ? " ✓" : ""}</option>
+                <option key={m} value={m}>{shortModel(m)}{m === settings.model ? " ✓" : ""}</option>
               ))}
               <option value="__manage__">⚙ 管理模型…</option>
             </select>
             {running ? (
-              <button className="send stop" title="停止当前任务" onClick={stopRun}>■</button>
+              <button className="send stop" title="停止当前任务" onClick={stopRun}>
+                <span className="stopsq" />
+              </button>
             ) : (
               <button className="send" onClick={sendMessage} disabled={conn !== "open" || !input.trim()}>↑</button>
             )}
           </div>
         </div>
       </div>
+      {switching && (
+        <div className="switching-mask">
+          <div className="switching-card">
+            <div className="spin big" />
+            <div>正在切换项目 · daemon 重启中…</div>
+            <div className="meta">通常需要 5–20 秒（sidecar 冷启动），完成后自动重连</div>
+          </div>
+        </div>
+      )}
       {showOnboard && (
         <div className="onboard-mask">
           <div className="onboard-card">
@@ -1865,7 +2220,7 @@ function App() {
                   ? "测试中…（最长 30s）"
                   : testState.ok
                     ? `✓ 连接正常 · ${testState.latency_ms}ms · 回复: ${testState.reply || "(空)"}`
-                    : `✗ ${testState.error}`}
+                    : `连接失败：${testState.error}`}
               </div>
             )}
             <div className="onboard-actions">

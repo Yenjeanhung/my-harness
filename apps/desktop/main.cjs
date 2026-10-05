@@ -34,7 +34,37 @@ var WS_URL = `ws://127.0.0.1:${PORT}/ws`;
 var APP_VERSION = import_electron.app.getVersion();
 var sidecar = null;
 var staleRestarted = false;
+var win = null;
+var projectsFile = () => import_path.default.join(import_electron.app.getPath("userData"), "projects.json");
+function loadProjects() {
+  try {
+    const j = JSON.parse(import_fs.default.readFileSync(projectsFile(), "utf8"));
+    return { current: j.current || null, recent: Array.isArray(j.recent) ? j.recent : [] };
+  } catch {
+    return { current: null, recent: [] };
+  }
+}
+function saveProjects(p) {
+  import_fs.default.mkdirSync(import_path.default.dirname(projectsFile()), { recursive: true });
+  import_fs.default.writeFileSync(projectsFile(), JSON.stringify(p, null, 2), "utf8");
+}
+async function restartServerWithWorkspace(ws) {
+  if (sidecar) {
+    try {
+      sidecar.kill();
+    } catch {
+    }
+    sidecar = null;
+  } else {
+    await killPortListeners(PORT);
+  }
+  await sleep(1e3);
+  for (let i = 0; i < 10 && (await probeHealth()).ok; i++) await sleep(300);
+  const state = await ensureServer(ws);
+  return state;
+}
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var normalizePath = (p) => import_path.default.normalize(p).replace(/[\\/]+$/, "").toLowerCase();
 function probeHealth() {
   return new Promise((resolve) => {
     const req = import_http.default.get(`${HTTP_BASE}/health`, (res) => {
@@ -43,18 +73,26 @@ function probeHealth() {
       res.on("end", () => {
         try {
           const j = JSON.parse(body);
-          resolve({ ok: res.statusCode === 200, version: j.version || null });
+          resolve({
+            ok: res.statusCode === 200,
+            version: j.version || null,
+            workspace: j.workspace || null
+          });
         } catch {
-          resolve({ ok: false, version: null });
+          resolve({ ok: false, version: null, workspace: null });
         }
       });
     });
-    req.on("error", () => resolve({ ok: false, version: null }));
+    req.on("error", () => resolve({ ok: false, version: null, workspace: null }));
     req.setTimeout(1500, () => {
       req.destroy();
-      resolve({ ok: false, version: null });
+      resolve({ ok: false, version: null, workspace: null });
     });
   });
+}
+async function serverMatches(ws) {
+  const h = await probeHealth();
+  return !!(h.ok && h.version === APP_VERSION && h.workspace && normalizePath(h.workspace) === normalizePath(ws));
 }
 function killPortListeners(port) {
   if (process.platform !== "win32") return Promise.resolve();
@@ -76,7 +114,7 @@ function killPortListeners(port) {
     });
   });
 }
-async function ensureServer() {
+async function ensureServer(workspace) {
   const h = await probeHealth();
   if (h.ok) {
     if (h.version === APP_VERSION) return "attached";
@@ -84,14 +122,15 @@ async function ensureServer() {
     await sleep(800);
     staleRestarted = true;
   }
+  const wsArgs = workspace ? ["--workspace", workspace] : [];
   const attempts = [];
   if (process.resourcesPath) {
     const f = import_path.default.join(process.resourcesPath, "harness-server.exe");
-    if (import_fs.default.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT] });
+    if (import_fs.default.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT, ...wsArgs] });
   }
   attempts.push({
     cmd: process.platform === "win32" ? "harness.exe" : "harness",
-    args: ["serve", "--port", PORT]
+    args: ["serve", "--port", PORT, ...wsArgs]
   });
   for (const a of attempts) {
     const cmd = a.file || a.cmd;
@@ -120,7 +159,40 @@ async function ensureServer() {
 }
 import_electron.app.whenReady().then(async () => {
   import_electron.Menu.setApplicationMenu(null);
-  const serverState = await ensureServer();
+  import_electron.ipcMain.handle("pick-folder", async () => {
+    if (!win) return null;
+    const r = await import_electron.dialog.showOpenDialog(win, {
+      title: "\u9009\u62E9\u9879\u76EE\u6587\u4EF6\u5939",
+      properties: ["openDirectory", "createDirectory"]
+    });
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+  });
+  import_electron.ipcMain.handle("get-projects", () => loadProjects());
+  import_electron.ipcMain.handle("open-project", async (_e, p) => {
+    if (!p || !import_fs.default.existsSync(p) || !import_fs.default.statSync(p).isDirectory()) return "invalid";
+    const st = loadProjects();
+    const same = st.current === p;
+    if (!same) {
+      st.current = p;
+      st.recent = [p, ...st.recent.filter((x) => x !== p)].slice(0, 8);
+      saveProjects(st);
+    }
+    const state = same && await serverMatches(p) ? "attached" : await restartServerWithWorkspace(p);
+    try {
+      await win?.loadFile(import_path.default.join(__dirname, "renderer", "index.html"), {
+        query: { ws: WS_URL, server: state }
+      });
+    } catch {
+    }
+    return state;
+  });
+  const projects = loadProjects();
+  let serverState;
+  if (projects.current) {
+    serverState = await serverMatches(projects.current) ? "attached" : await restartServerWithWorkspace(projects.current);
+  } else {
+    serverState = await ensureServer();
+  }
   if (serverState === "unavailable") {
     import_electron.dialog.showMessageBox({
       type: "warning",
@@ -128,12 +200,16 @@ import_electron.app.whenReady().then(async () => {
       detail: "\u672A\u80FD\u8FDE\u63A5\u6216\u542F\u52A8 harness serve\u3002\n\u8BF7\u786E\u8BA4 `harness` \u5728 PATH \u4E2D\uFF08pip install -e .\uFF09\uFF0C\u6216\u91CD\u65B0\u6253\u5305\u4EE5\u5185\u5D4C harness-server.exe\u3002"
     });
   }
-  const win = new import_electron.BrowserWindow({
+  win = new import_electron.BrowserWindow({
     width: 1280,
     height: 880,
     backgroundColor: "#111318",
     title: "My-Harness",
-    webPreferences: { contextIsolation: true, nodeIntegration: false }
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: import_path.default.join(__dirname, "preload.cjs")
+    }
   });
   win.loadFile(import_path.default.join(__dirname, "renderer", "index.html"), {
     query: { ws: WS_URL, server: serverState }

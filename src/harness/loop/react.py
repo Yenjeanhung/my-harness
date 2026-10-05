@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import inspect
 import platform
 from dataclasses import dataclass, field
 from typing import Callable
 
 from ..core.events import EventType
-from ..core.messages import Message, TextBlock, ToolResultBlock, Usage
+from ..core.messages import Message, TextBlock, ToolResultBlock, ToolUseBlock, Usage
 from ..providers import BaseProvider, DeltaCallback
 from ..tools.base import ToolContext, ToolRegistry
 
@@ -24,6 +25,7 @@ Environment:
 Rules:
 - Use the provided tools to read, search and modify files. Prefer targeted reads (offset/limit, grep) over dumping whole files.
 - After each tool call, check the result before deciding the next step.
+- Commands have a 120s timeout and are killed afterwards. For expensive operations (large scans, bulk deletes, builds, installs), work in batches and write scripts that PRINT PROGRESS as they go (e.g. one line per directory) instead of a single summary at the end — silent commands look hung and get killed mid-work.
 - Keep final answers concise; report faithfully what you did, including errors and incomplete work.
 - Never invent tool output. If a tool fails, adjust and retry differently or tell the user.
 """
@@ -36,6 +38,18 @@ class Budget:
 
 
 NoticeCallback = Callable[[str], None]
+# 工具调用参数流式生成回调：(call_id, tool_name, 累积的原始参数文本)
+ToolArgsCallback = Callable[[str, str, str], None]
+# 工具执行期过程输出回调：(tool_use, 输出增量)
+ToolOutputCallback = Callable[[ToolUseBlock, str], None]
+
+
+def _accepts(func: Callable, name: str) -> bool:
+    """provider.chat 是否接受某关键字参数（兼容不接受新回调的旧实现/测试桩）。"""
+    try:
+        return name in inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 class ReActLoop:
@@ -76,6 +90,9 @@ class ReActLoop:
         on_notice: NoticeCallback | None = None,
         images: list[dict] | None = None,
         on_reason: DeltaCallback | None = None,
+        on_tool_args: ToolArgsCallback | None = None,
+        on_tool_output: ToolOutputCallback | None = None,
+        on_usage: Callable[[Usage], None] | None = None,
     ) -> str:
         budget = budget or Budget()
         self.current_budget = budget
@@ -116,8 +133,12 @@ class ReActLoop:
 
                 system += render_blocks_suffix(blocks)
 
-            # on_reason 只在调用方需要时传（兼容不接受该参数的 duck-typed 测试桩）
-            chat_kwargs = {"on_reason": on_reason} if on_reason else {}
+            # on_reason/on_tool_stream 只在调用方需要且 provider 支持时传（兼容 duck-typed 测试桩）
+            chat_kwargs = {}
+            if on_reason is not None and _accepts(self.provider.chat, "on_reason"):
+                chat_kwargs["on_reason"] = on_reason
+            if on_tool_args is not None and _accepts(self.provider.chat, "on_tool_stream"):
+                chat_kwargs["on_tool_stream"] = on_tool_args
             result = await self.provider.chat(
                 system=system,
                 messages=msgs,
@@ -126,6 +147,8 @@ class ReActLoop:
                 **chat_kwargs,
             )
             usage_total.add(result.usage)
+            if on_usage:
+                on_usage(usage_total)  # 每轮模型返回后推送累计用量（含子代理共享部分），UI 实时显示
             if self.context_engine:
                 last_input = (
                     result.usage.input_tokens
@@ -184,9 +207,16 @@ class ReActLoop:
                             path_arg = tu.input.get("path")
                             if path_arg:
                                 self.shadow.snapshot([path_arg], label=tu.name)
-                        tr = await self.registry.execute(
-                            tu.name, tu.input, tool_use_id=tu.id, ctx=self.ctx
-                        )
+                        # 过程输出挂到 ctx 上（bash 逐行上报）；子代理拿的是 ctx 副本，互不干扰
+                        prev_sink = getattr(self.ctx, "on_output", None)
+                        if on_tool_output is not None:
+                            self.ctx.on_output = lambda text, _tu=tu: on_tool_output(_tu, text)
+                        try:
+                            tr = await self.registry.execute(
+                                tu.name, tu.input, tool_use_id=tu.id, ctx=self.ctx
+                            )
+                        finally:
+                            self.ctx.on_output = prev_sink
                         if self.context_engine and len(tr.content) > self.context_engine.offload_threshold:
                             tr.content = self.context_engine.offload_result(session.id, tr.content)
                     results.append(tr)

@@ -24,6 +24,8 @@ class ToolContext(BaseModel):
     blocks: Any = None  # BlockStore（当前会话的短期记忆）
     event_store: Any = None  # EventStore（情景检索）
     skills: Any = None  # SkillRegistry
+    # 长任务过程输出（bash 逐行 stdout）：执行前由 ReActLoop 挂上、执行后复位；UI 据此实时刷新工具卡片
+    on_output: Any = None  # Callable[[str], None] | None
 
 
 class ToolSpec(BaseModel):

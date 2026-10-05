@@ -1,0 +1,203 @@
+// UI 事件协议类型（与 PROTOCOL.md 对应）：服务端 → 渲染进程的 WsEvent、渲染进程 → 服务端的 WsCommand。
+// Python 侧改协议时同步改这里，所有消息收发点由编译器保证字段一致。
+
+// 权限模式 / 思考档位（协议枚举值，与内核一致）
+export type PermMode = "plan" | "default" | "acceptEdits" | "dontAsk" | "bypass";
+export type ThinkLevel = "off" | "low" | "high" | "max";
+
+export interface Img {
+  media_type: string;
+  data: string; // base64
+}
+
+// —— 共享数据结构 ——
+
+export interface SessionInfo {
+  session_id: string;
+  title?: string;
+  last_active: string;
+  events: number;
+  pinned?: boolean;
+  group?: string;
+}
+
+export interface ContentResult {
+  session_id: string;
+  title?: string;
+  snippet: string;
+}
+
+export interface ModelEntry {
+  model: string;
+  api_base?: string;
+  has_key: boolean;
+  active: boolean;
+}
+
+export interface Usage {
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface SettingsState {
+  model: string;
+  has_api_key: boolean;
+  api_base?: string;
+  server_version?: string;
+  permission_mode?: PermMode;
+  thinking?: ThinkLevel;
+  models: ModelEntry[];
+}
+
+export interface SessionCostData {
+  session_id: string;
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd?: number | null;
+}
+
+export interface StatsState {
+  sessions: number;
+  messages: number;
+  runs: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd?: number | null;
+  db_bytes: number;
+  data_dir?: string;
+}
+
+export interface MemBlock {
+  label: string;
+  chars: number;
+  limit: number;
+  value?: string;
+}
+
+export interface MemFile {
+  path: string;
+  size: number;
+}
+
+export interface McpServerInfo {
+  name: string;
+  status: string;
+  transport: string;
+  source: string;
+  target: string;
+  tools: number;
+}
+
+export interface SkillInfo {
+  name: string;
+  description?: string;
+  source?: string;
+}
+
+export interface PermissionRequest {
+  request_id: string;
+  tool: string;
+  reason: string;
+}
+
+export interface ModelTestResult {
+  status: "ok" | "fail" | "error";
+  ok: boolean;
+  model?: string;
+  latency_ms?: number;
+  reply?: string;
+  error?: string;
+}
+
+// 历史回放条目（History 事件），kind 与服务端事件库一致
+export interface HistoryEntry {
+  kind: string;
+  text?: string;
+  tool?: string;
+  args?: unknown;
+  images?: Img[];
+  seq?: number;
+}
+
+// —— 服务端 → 渲染进程 ——
+
+export type WsEvent =
+  | { type: "SessionCreated"; session_id: string; mode?: PermMode }
+  | { type: "SessionResumed"; session_id: string }
+  | { type: "SessionList"; sessions?: SessionInfo[]; groups?: string[] }
+  | { type: "History"; items?: HistoryEntry[] }
+  | { type: "ContentSearchResult"; results?: ContentResult[] }
+  | ({ type: "Settings" } & SettingsState)
+  | { type: "ModelSet"; model: string; has_api_key: boolean; models?: ModelEntry[] }
+  | ({ type: "ModelTestResult" } & ModelTestResult)
+  | ({ type: "SessionCost" } & SessionCostData)
+  | ({ type: "Stats" } & StatsState)
+  | { type: "MemoryList"; blocks?: MemBlock[]; files?: MemFile[] }
+  | { type: "MemoryFileContent"; path: string; content: string }
+  | { type: "McpList"; servers?: McpServerInfo[] }
+  | { type: "SkillList"; skills?: SkillInfo[] }
+  | { type: "ImageSaved"; path: string; media_type: string; data: string }
+  | { type: "WorkspaceFile"; path: string; content: string; truncated?: boolean }
+  | { type: "RunStarted" }
+  | { type: "ReasoningDelta"; text: string }
+  | { type: "TokenDelta"; text: string }
+  | { type: "ToolCallStarted"; tool: string; args?: unknown }
+  | { type: "ToolCallResult"; tool: string; is_error?: boolean; chars?: number }
+  | { type: "Notice"; text: string }
+  | ({ type: "PermissionRequest" } & PermissionRequest)
+  | {
+      type: "RunFinished";
+      answer?: string;
+      duration_ms?: number;
+      usage?: Usage;
+      cost_usd?: number | null;
+      last_seq?: number | null;
+    }
+  | { type: "Error"; error?: string };
+
+// —— 渲染进程 → 服务端 ——
+
+export type WsCommand =
+  | { type: "CreateSession" }
+  | { type: "ResumeSession"; session_id: string }
+  | { type: "ListSessions" }
+  | { type: "SendMessage"; session_id?: string | null; text: string; images?: Img[] }
+  | { type: "CancelRun"; session_id: string }
+  | { type: "ForkSession"; session_id: string; upto_seq: number }
+  | { type: "GetSettings" }
+  | { type: "SetModel"; model: string; api_base?: string; api_key?: string }
+  | { type: "SwitchModel"; model: string }
+  | { type: "DeleteModelConfig"; model: string }
+  | { type: "TestModel"; model: string; api_key?: string; api_base?: string }
+  | { type: "SetPermissionMode"; mode: PermMode }
+  | { type: "SetThinking"; level: ThinkLevel }
+  | { type: "RespondPermission"; request_id: string; answer: "yes" | "always" | "no" }
+  | { type: "GetSessionCost"; session_id: string }
+  | { type: "GetStats" }
+  | { type: "OpenDataDir" }
+  | { type: "SearchContent"; query: string; limit: number }
+  | { type: "UploadImage"; data_url: string }
+  | { type: "ReadWorkspaceFile"; path: string }
+  | { type: "ListMemory"; session_id?: string | null }
+  | { type: "ReadMemoryFile"; path: string }
+  | { type: "DeleteMemoryBlock"; session_id?: string | null; label: string }
+  | { type: "DeleteMemoryFile"; path: string }
+  | { type: "ListMcp" }
+  | {
+      type: "AddMcpServer";
+      name: string;
+      transport: "stdio" | "http";
+      command: string;
+      args: string;
+      url: string;
+    }
+  | { type: "RemoveMcpServer"; name: string }
+  | { type: "ListSkills" }
+  | { type: "RenameSession"; session_id: string; title: string }
+  | { type: "DeleteSession"; session_id: string }
+  | { type: "PinSession"; session_id: string; pinned: boolean }
+  | { type: "CreateSessionGroup"; name: string }
+  | { type: "RenameSessionGroup"; name: string; new_name: string }
+  | { type: "DeleteSessionGroup"; name: string }
+  | { type: "SetSessionGroup"; session_id: string; group: string };

@@ -858,6 +858,7 @@ class ServerState:
             )
             usage = {"input_tokens": budget.usage.input_tokens, "output_tokens": budget.usage.output_tokens}
             model = getattr(loop.provider, "default_model", "")  # 空（测试桩）→ cost None，不猜测
+            entries = sess.messages_with_seq()
             self._notify(
                 {
                     "type": "RunFinished",
@@ -866,6 +867,8 @@ class ServerState:
                     "duration_ms": int((time.monotonic() - t0) * 1000),
                     "usage": usage,
                     "cost_usd": cost_of(model, usage, self.cfg.pricing),
+                    # 本轮最后一条消息的 seq：前端立刻给新消息提供分支入口，无需重进会话
+                    "last_seq": entries[-1][0] if entries else None,
                 }
             )
         except asyncio.CancelledError:

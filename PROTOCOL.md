@@ -83,7 +83,7 @@
 | `TokenDelta` | `session_id`, `text` | 流式文本增量 |
 | `ReasoningDelta` | `session_id`, `text` | 推理内容增量（GLM/DeepSeek 系 reasoning_content；客户端用于「正在思考」实时展示，可忽略） |
 | `ToolCallStarted` / `ToolCallResult` | `tool`, `args` / `tool`, `is_error`, `chars` | 工具卡片 |
-| `RunFinished` | `answer`, `duration_ms`, `usage{input_tokens,output_tokens}`, `cost_usd`(价格未知为 null) | 一轮结束，带用量与近似费用 |
+| `RunFinished` | `answer`, `duration_ms`, `usage{input_tokens,output_tokens}`, `cost_usd`(价格未知为 null), `last_seq`(本轮最后一条消息的 seq，会话为空为 null) | 一轮结束，带用量与近似费用；前端据 `last_seq` 让新消息立刻可分支 |
 | `PermissionRequest` | `request_id`, `tool`, `reason` | 需要审批；用 `RespondPermission` 应答 |
 | `Notice` | `text`, `session_id?` | 非致命通知（取消/导出/权限切换等） |
 | `Error` | `error`, `session_id?` | 命令执行失败或 run 报错 |

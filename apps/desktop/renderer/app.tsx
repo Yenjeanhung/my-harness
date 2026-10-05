@@ -1,16 +1,36 @@
 // My-Harness 桌面端渲染进程：纯 Web 页面 + WebSocket，走 Local Server 的 UI 事件协议（DESIGN.md §4.11）。
 // 工作区：ZCode 式布局——模型回答靠左、用户输入靠右（气泡）、工具卡片、审批卡片、运行时长。
 // 输入栏：＋附件 / 权限模式 / 思考档位 / 模型切换 / 发送。设置页：模型(列表)/记忆/MCP/技能/常规。
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type * as React from "react";
 import { createRoot } from "react-dom/client";
 import { marked } from "marked";
+import type {
+  Img,
+  SessionInfo,
+  ContentResult,
+  SettingsState,
+  SessionCostData,
+  StatsState,
+  MemBlock,
+  MemFile,
+  McpServerInfo,
+  SkillInfo,
+  PermissionRequest,
+  ModelTestResult,
+  Usage,
+  PermMode,
+  ThinkLevel,
+  WsEvent,
+  WsCommand,
+} from "./protocol";
 
 marked.setOptions({ gfm: true, breaks: true });
 
 // 助手消息是模型输出的 Markdown：渲染成 HTML 前做最小净化（去 script/事件属性/js: 链接）
-function mdRender(text) {
+function mdRender(text: string): string {
   const html = marked.parse(text || "");
-  return html
+  return String(html)
     .replace(/<(script|style|iframe)[\s\S]*?<\/\1>/gi, "")
     .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, "")
     .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, "");
@@ -20,7 +40,15 @@ const params = new URLSearchParams(window.location.search);
 const WS_URL = params.get("ws") || "ws://127.0.0.1:8765/ws";
 const SERVER_STATE = params.get("server") || "unknown";
 
-const PROVIDERS = [
+// daemon 握手状态 → 设置页「常规」里的人类可读说明
+const STATE_TEXT: Record<string, string> = {
+  attached: "attached",
+  started: "sidecar started",
+  restarted: "旧 daemon 已替换",
+  unavailable: "daemon NOT found",
+};
+
+const PROVIDERS: { key: string; name: string; hint: string }[] = [
   { key: "deepseek", name: "DeepSeek", hint: "如 deepseek-chat / deepseek-reasoner" },
   { key: "zhipuai", name: "智谱 BigModel", hint: "如 glm-4.6 / glm-4.5-air" },
   { key: "moonshot", name: "Moonshot Kimi", hint: "如 kimi-k2 / moonshot-v1-8k" },
@@ -32,7 +60,7 @@ const PROVIDERS = [
 ];
 const KNOWN_PREFIXES = PROVIDERS.filter((p) => p.key !== "custom").map((p) => p.key);
 // 各厂商 OpenAI 兼容端点缺省值（与内核 DEFAULT_BASES 一致；用户显式填写时覆盖）
-const PROVIDER_BASES = {
+const PROVIDER_BASES: Record<string, string> = {
   deepseek: "https://api.deepseek.com",
   zhipuai: "https://open.bigmodel.cn/api/paas/v4",
   moonshot: "https://api.moonshot.cn/v1",
@@ -42,28 +70,25 @@ const PROVIDER_BASES = {
   anthropic: "",
   custom: "",
 };
-const THINKING_LABELS = { off: "关", low: "低", high: "高", max: "最高" };
-// 权限模式：ZCode 式下拉（图标+标题+描述），完全访问用橘黄警示
-const PERM_META = {
-  plan: { label: "计划模式", desc: "编辑前先出计划，确认后再动手。", icon: "bulb" },
-  default: { label: "默认确认", desc: "写入和命令执行前先问我。", icon: "pointer" },
-  acceptEdits: { label: "自动编辑", desc: "自动应用文件编辑。", icon: "shield-check" },
-  dontAsk: { label: "自动拒绝", desc: "不询问，直接拒绝敏感操作。", icon: "shield-x" },
-  bypass: { label: "完全访问", desc: "跳过所有确认，谨慎使用。", icon: "shield-alert" },
-};
+const THINKING_LABELS: Record<ThinkLevel, string> = { off: "关", low: "低", high: "高", max: "最高" };
 
-let ws = null;
+let ws: WebSocket | null = null;
 let nextId = 1;
+
+// 唯一的消息出口：命令类型不对编译不过，ws 未连接时静默丢弃
+function sendCmd(cmd: WsCommand) {
+  ws?.send(JSON.stringify(cmd));
+}
 
 const GROUP_ORDER = ["今天", "昨天", "本周", "本月", "更早"];
 
-function groupKey(lastActive) {
+function groupKey(lastActive: string): string {
   const d = new Date(lastActive);
-  if (isNaN(d)) return "更早";
+  if (isNaN(d.getTime())) return "更早";
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((today - day) / 86400000);
+  const diffDays = Math.round((today.getTime() - day.getTime()) / 86400000);
   if (diffDays <= 0) return "今天";
   if (diffDays === 1) return "昨天";
   if (diffDays < 7) return "本周";
@@ -71,8 +96,8 @@ function groupKey(lastActive) {
   return "更早";
 }
 
-function groupSessions(list) {
-  const byKey = {};
+function groupSessions(list: SessionInfo[] | null | undefined): { key: string; label: string; items: SessionInfo[] }[] {
+  const byKey: Record<string, SessionInfo[]> = {};
   for (const s of list || []) {
     const k = groupKey(s.last_active);
     (byKey[k] = byKey[k] || []).push(s);
@@ -80,7 +105,7 @@ function groupSessions(list) {
   return GROUP_ORDER.filter((k) => byKey[k]).map((k) => ({ key: "date:" + k, label: k, items: byKey[k] }));
 }
 
-const pad2 = (n) => String(n).padStart(2, "0");
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 // 简洁线性图标（feather 风格，currentColor 跟随文字色）
 const ICON_PATHS = {
@@ -177,6 +202,12 @@ const ICON_PATHS = {
     </>
   ),
   chev: <path d="M6 9l6 6 6-6" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
   branch: (
     <>
       <path d="M6 3v12" />
@@ -193,7 +224,9 @@ const ICON_PATHS = {
   ),
 };
 
-function Icon({ name, size = 13, filled = false }) {
+type IconName = keyof typeof ICON_PATHS;
+
+function Icon({ name, size = 13, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
   return (
     <svg
       width={size}
@@ -211,13 +244,22 @@ function Icon({ name, size = 13, filled = false }) {
   );
 }
 
-function fmtRowTime(lastActive) {
+// 权限模式：ZCode 式下拉（图标+标题+描述），完全访问用橘黄警示
+const PERM_META: Record<PermMode, { label: string; desc: string; icon: IconName }> = {
+  plan: { label: "计划模式", desc: "编辑前先出计划，确认后再动手。", icon: "bulb" },
+  default: { label: "默认确认", desc: "写入和命令执行前先问我。", icon: "pointer" },
+  acceptEdits: { label: "自动编辑", desc: "自动应用文件编辑。", icon: "shield-check" },
+  dontAsk: { label: "自动拒绝", desc: "不询问，直接拒绝敏感操作。", icon: "shield-x" },
+  bypass: { label: "完全访问", desc: "跳过所有确认，谨慎使用。", icon: "shield-alert" },
+};
+
+function fmtRowTime(lastActive: string): string {
   const d = new Date(lastActive);
-  if (isNaN(d)) return "";
+  if (isNaN(d.getTime())) return "";
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((today - day) / 86400000);
+  const diffDays = Math.round((today.getTime() - day.getTime()) / 86400000);
   const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   if (diffDays <= 0) return hm;
   if (diffDays === 1) return `昨天 ${hm}`;
@@ -226,22 +268,29 @@ function fmtRowTime(lastActive) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function providerName(key) {
-  return (PROVIDERS.find((p) => p.key === key) || {}).name || key;
+function providerName(key: string): string {
+  return PROVIDERS.find((p) => p.key === key)?.name || key;
 }
 // token 数紧凑显示：1234 -> 1.2k
-function fmtTok(n) {
+function fmtTok(n: number): string {
   const v = Number(n) || 0;
   return v >= 10000 ? `${(v / 1000).toFixed(1)}k` : String(v);
 }
-function fmtCost(c) {
+function fmtCost(c: number | null | undefined): string | null {
   return c == null ? null : c < 0.0001 && c > 0 ? "<$0.0001" : `$${c.toFixed(4)}`;
 }
 
 // 工具调用 → ZCode 式活动行动词/目标/新增行数（+N 徽标）
-function describeTool(tool, args) {
-  const a = args || {};
-  const lines = (s) => (typeof s === "string" && s ? s.split("\n").length : null);
+interface ToolMeta {
+  verb: string;
+  icon: IconName;
+  target: string;
+  add?: number | null;
+}
+
+function describeTool(tool: string, args?: unknown): ToolMeta {
+  const a = (args || {}) as Record<string, any>;
+  const lines = (s: unknown) => (typeof s === "string" && s ? s.split("\n").length : null);
   if (tool === "read_file") return { verb: "读取", icon: "file", target: a.path };
   if (tool === "grep") return { verb: "搜索", icon: "search", target: a.pattern };
   if (tool === "glob") return { verb: "查找", icon: "search", target: a.pattern };
@@ -257,80 +306,155 @@ function describeTool(tool, args) {
   if (/^(memory_|block_)/.test(tool)) return { verb: "记忆", icon: "database", target: a.path || a.label || "" };
   return { verb: tool, icon: "zap", target: "" };
 }
-function splitModel(model, apiBase) {
+
+function splitModel(model: string | undefined, apiBase: string | undefined): { provider: string; modelName: string } {
   const slash = (model || "").indexOf("/");
-  const p = slash > 0 ? model.slice(0, slash) : "";
-  const name = slash > 0 ? model.slice(slash + 1) : model || "";
+  const p = slash > 0 ? model!.slice(0, slash) : "";
+  const name = slash > 0 ? model!.slice(slash + 1) : model || "";
   if (KNOWN_PREFIXES.includes(p) && name) return { provider: p, modelName: name };
   if (model && apiBase) return { provider: "custom", modelName: model.replace(/^openai\//, "") };
   if (model) return { provider: "custom", modelName: model };
   return { provider: "deepseek", modelName: "" };
 }
 
+// —— 会话消息流条目（客户端状态，History/事件流归一后的形状）——
+interface UserItem {
+  id: number;
+  kind: "user";
+  text: string;
+  images?: Img[];
+  seq?: number;
+}
+interface AssistantItem {
+  id: number;
+  kind: "assistant";
+  text: string;
+  seq?: number;
+  duration_ms?: number;
+  usage?: Usage;
+  cost_usd?: number | null;
+}
+interface ToolItem {
+  id: number;
+  kind: "tool";
+  text?: string;
+  tool: string;
+  args?: string;
+  status?: "running" | "done" | "fail";
+  detail?: string;
+  meta?: ToolMeta;
+}
+interface ThinkItem {
+  id: number;
+  kind: "think";
+  secs?: number;
+  text?: string;
+}
+interface NoticeItem {
+  id: number;
+  kind: "notice";
+  text: string;
+}
+interface ErrorItem {
+  id: number;
+  kind: "error";
+  text: string;
+}
+type ChatItem = UserItem | AssistantItem | ToolItem | ThinkItem | NoticeItem | ErrorItem;
+type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
+
+interface Attachment {
+  path: string;
+  content: string;
+  truncated?: boolean;
+}
+interface PasteImage {
+  media_type: string;
+  data: string;
+  path?: string;
+  preview?: string;
+}
+interface QueueItem {
+  id: number;
+  text: string;
+  composed: string;
+  imgs: Img[];
+}
+interface ModelForm {
+  provider: string;
+  modelName: string;
+  api_key: string;
+  api_base: string;
+}
+type TestState = { status: "running" } | ModelTestResult;
+type ConnState = "connecting" | "open" | "closed";
+type Section = "models" | "memory" | "mcp" | "skills" | "general";
+
 function App() {
-  const [view, setView] = useState("chat"); // chat | settings
-  const [section, setSection] = useState("models");
-  const [conn, setConn] = useState("connecting");
-  const [sessionId, setSessionId] = useState(null);
-  const [items, setItems] = useState([]);
+  const [view, setView] = useState<"chat" | "settings">("chat"); // chat | settings
+  const [section, setSection] = useState<Section>("models");
+  const [conn, setConn] = useState<ConnState>("connecting");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
-  const [permission, setPermission] = useState(null); // 审批请求
-  const [sessions, setSessions] = useState([]);
-  const [sessionGroups, setSessionGroups] = useState([]);
+  const [permission, setPermission] = useState<PermissionRequest | null>(null); // 审批请求
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [sessionGroups, setSessionGroups] = useState<string[]>([]);
   const [showGroupInput, setShowGroupInput] = useState(false);
   const [groupInput, setGroupInput] = useState("");
-  const [groupRenaming, setGroupRenaming] = useState(null); // {old, value}
-  const [dropTarget, setDropTarget] = useState(null);
-  const [moveSession, setMoveSession] = useState(null);
-  const [collapsedGroups, setCollapsedGroups] = useState({});
-  const [groupBy, setGroupBy] = useState("date"); // date | topic | group
-  const [contentResults, setContentResults] = useState([]);
+  const [groupRenaming, setGroupRenaming] = useState<{ old: string; value: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [moveSession, setMoveSession] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [groupBy, setGroupBy] = useState<"date" | "group">("date"); // date | topic | group
+  const [contentResults, setContentResults] = useState<ContentResult[]>([]);
   const [searchQ, setSearchQ] = useState("");
-  const [renaming, setRenaming] = useState(null); // {id, value}
-  const [confirmDelete, setConfirmDelete] = useState(null); // 待确认删除的 session_id
-  const [settings, setSettings] = useState({
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // 待确认删除的 session_id
+  const [settings, setSettings] = useState<SettingsState>({
     model: "", has_api_key: false, api_base: "", server_version: "",
     permission_mode: "default", thinking: "off", models: [],
   });
-  const [modelForm, setModelForm] = useState({ provider: "deepseek", modelName: "", api_key: "", api_base: "" });
+  const [modelForm, setModelForm] = useState<ModelForm>({ provider: "deepseek", modelName: "", api_key: "", api_base: "" });
   const [savedFlash, setSavedFlash] = useState(false);
-  const [permMode, setPermMode] = useState("default");
-  const [thinking, setThinking] = useState("off");
-  const [attachments, setAttachments] = useState([]); // {path?, content?} 文本附件
-  const [pasteImages, setPasteImages] = useState([]); // {media_type, data, path, preview}
+  const [permMode, setPermMode] = useState<PermMode>("default");
+  const [thinking, setThinking] = useState<ThinkLevel>("off");
+  const [attachments, setAttachments] = useState<Attachment[]>([]); // 文本附件
+  const [pasteImages, setPasteImages] = useState<PasteImage[]>([]);
   const [showAttach, setShowAttach] = useState(false);
   const [attachPath, setAttachPath] = useState("");
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [firstToken, setFirstToken] = useState(false); // 本轮是否已收到首 token
   const [reason, setReason] = useState(""); // 当前轮推理增量（保留末 400 字符，ZCode 式正在思考）
-  const [queue, setQueue] = useState([]); // 运行中排队的消息 {id, text, composed, imgs}
+  const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
   const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
-  const [outlineTip, setOutlineTip] = useState(null); // 左侧消息导航悬浮预览 {text, top}
-  const permDropRef = useRef(null);
-  const [preview, setPreview] = useState(null); // 图片放大预览（dataURL）
+  const [outlineTip, setOutlineTip] = useState<{ text: string; top: number } | null>(null); // 左侧消息导航悬浮预览
+  const [copiedId, setCopiedId] = useState<number | null>(null); // 刚复制完的消息 id（图标短暂变 ✓）
+  const permDropRef = useRef<HTMLDivElement | null>(null);
+  const [preview, setPreview] = useState<string | null>(null); // 图片放大预览（dataURL）
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [onboard, setOnboard] = useState(true); // 首启引导：模型列表为空时全屏展示
-  const [testState, setTestState] = useState(null); // TestModel 结果 {status|ok, latency_ms, reply, error}
-  const [sessCost, setSessCost] = useState(null); // 当前会话累计 {turns, input_tokens, output_tokens, cost_usd}
-  const [stats, setStats] = useState(null); // GetStats 结果（设置页「常规」）
-  const [memory, setMemory] = useState({ blocks: [], files: [] });
-  const [memFile, setMemFile] = useState(null);
-  const [mcpServers, setMcpServers] = useState([]);
-  const [mcpForm, setMcpForm] = useState({ name: "", transport: "stdio", command: "", args: "", url: "" });
-  const [skills, setSkills] = useState([]);
-  const listRef = useRef(null);
-  const assistantBuf = useRef(null);
+  const [testState, setTestState] = useState<TestState | null>(null); // TestModel 结果
+  const [sessCost, setSessCost] = useState<SessionCostData | null>(null); // 当前会话累计
+  const [stats, setStats] = useState<StatsState | null>(null); // GetStats 结果（设置页「常规」）
+  const [memory, setMemory] = useState<{ blocks: MemBlock[]; files: MemFile[] }>({ blocks: [], files: [] });
+  const [memFile, setMemFile] = useState<{ path: string; content: string } | null>(null);
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
+  const [mcpForm, setMcpForm] = useState<{ name: string; transport: "stdio" | "http"; command: string; args: string; url: string }>({ name: "", transport: "stdio", command: "", args: "", url: "" });
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const assistantBuf = useRef<boolean | null>(null);
   const runStart = useRef(0);
   const pickedInitial = useRef(false); // 启动时只自动恢复一次最近会话
   // ws.onmessage 闭包只捕获首帧值，事件回调里读 state 一律走这些 ref
-  const connRef = useRef("connecting");
-  const sessionIdRef = useRef(null);
-  const viewRef = useRef("chat");
+  const connRef = useRef<ConnState>("connecting");
+  const sessionIdRef = useRef<string | null>(null);
+  const viewRef = useRef<"chat" | "settings">("chat");
   const roundStart = useRef(0); // 当前思考轮起点（思考·持续了 N 秒）
   const thinkPushed = useRef(true);
   const reasonRef = useRef("");
-  const queueRef = useRef([]);
+  const queueRef = useRef<QueueItem[]>([]);
   const runningRef = useRef(false);
   useEffect(() => { connRef.current = conn; }, [conn]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -338,13 +462,15 @@ function App() {
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { runningRef.current = running; }, [running]);
 
-  const addItem = (item) => setItems((prev) => [...prev, { id: nextId++, ...item }]);
-  const patchLastAssistant = (fn) =>
+  const addItem = (item: WithoutId<ChatItem>) =>
+    setItems((prev) => [...prev, { id: nextId++, ...item } as ChatItem]);
+  const patchLastAssistant = (fn: (it: AssistantItem) => Partial<AssistantItem>) =>
     setItems((prev) => {
       const next = [...prev];
       for (let i = next.length - 1; i >= 0; i--) {
-        if (next[i].kind === "assistant") {
-          next[i] = { ...next[i], ...fn(next[i]) };
+        const it = next[i];
+        if (it.kind === "assistant") {
+          next[i] = { ...it, ...fn(it) };
           return next;
         }
       }
@@ -364,17 +490,22 @@ function App() {
     reasonRef.current = "";
     setReason("");
     setItems((prev) =>
-      prev.map((it) =>
-        it.kind === "tool" && it.status === "running" ? { ...it, status: "fail", detail: "已停止" } : it
+      prev.map((it): ChatItem =>
+        it.kind === "tool" && it.status === "running"
+          ? { ...it, status: "fail", detail: "已停止" }
+          : it
       )
     );
   };
   // 实际发送（composed=附件拼好的文本；队列回放时用入队时拼好的版本）
-  const sendNow = (text, composed, imgs) => {
-    addItem({ kind: "user", text, images: imgs && imgs.length ? imgs : undefined });
-    const msg = { type: "SendMessage", session_id: sessionIdRef.current, text: composed || text };
-    if (imgs && imgs.length) msg.images = imgs;
-    ws.send(JSON.stringify(msg));
+  const sendNow = (text: string, composed: string, imgs: Img[]) => {
+    addItem({ kind: "user", text, images: imgs.length ? imgs : undefined });
+    sendCmd({
+      type: "SendMessage",
+      session_id: sessionIdRef.current,
+      text: composed || text,
+      images: imgs.length ? imgs : undefined,
+    });
   };
 
   // 运行中的计时器
@@ -387,8 +518,8 @@ function App() {
   // 权限下拉：点击外面关闭
   useEffect(() => {
     if (!permOpen) return;
-    const onDown = (e) => {
-      if (permDropRef.current && !permDropRef.current.contains(e.target)) setPermOpen(false);
+    const onDown = (e: MouseEvent) => {
+      if (permDropRef.current && !permDropRef.current.contains(e.target as Node)) setPermOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -399,13 +530,13 @@ function App() {
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
       setConn("open");
-      ws.send(JSON.stringify({ type: "ListSessions" })); // 由 SessionList 决定恢复最近会话或新建
-      ws.send(JSON.stringify({ type: "GetSettings" }));
+      sendCmd({ type: "ListSessions" }); // 由 SessionList 决定恢复最近会话或新建
+      sendCmd({ type: "GetSettings" });
     };
     ws.onclose = () => setConn("closed");
     ws.onerror = () => setConn("closed");
     ws.onmessage = (ev) => {
-      const e = JSON.parse(ev.data);
+      const e = JSON.parse(ev.data) as WsEvent;
       switch (e.type) {
         case "SessionCreated":
           setSessionId(e.session_id);
@@ -425,7 +556,7 @@ function App() {
           assistantBuf.current = null;
           setRunning(false);
           setSessCost(null);
-          ws.send(JSON.stringify({ type: "GetSessionCost", session_id: e.session_id }));
+          sendCmd({ type: "GetSessionCost", session_id: e.session_id });
           break;
         case "ContentSearchResult":
           setContentResults(e.results || []);
@@ -451,15 +582,15 @@ function App() {
           break;
         case "History":
           setItems(
-            (e.items || []).map((it) => ({
+            (e.items || []).map((it): ChatItem => ({
               id: nextId++,
-              kind: it.kind,
+              kind: it.kind as ChatItem["kind"],
               text: it.text || "",
-              tool: it.tool,
+              tool: it.tool || "",
               args: it.args ? JSON.stringify(it.args) : undefined,
               status: it.kind === "tool" ? "done" : undefined,
               images: it.images,
-              meta: it.kind === "tool" ? describeTool(it.tool, it.args) : undefined,
+              meta: it.kind === "tool" ? describeTool(it.tool || "", it.args) : undefined,
               seq: it.seq,
             }))
           );
@@ -560,9 +691,10 @@ function App() {
           setItems((prev) => {
             const next = [...prev];
             for (let i = next.length - 1; i >= 0; i--) {
-              if (next[i].kind === "tool" && next[i].tool === e.tool && next[i].status === "running") {
+              const it = next[i];
+              if (it.kind === "tool" && it.tool === e.tool && it.status === "running") {
                 next[i] = {
-                  ...next[i],
+                  ...it,
                   status: e.is_error ? "fail" : "done",
                   detail: e.is_error ? "error" : `${e.chars} chars`,
                 };
@@ -581,8 +713,8 @@ function App() {
             markRunEnded();
           }
           if (viewRef.current !== "chat") {
-            if (/已删除 memory:/.test(e.text)) ws.send(JSON.stringify({ type: "ListMemory", session_id: sessionIdRef.current }));
-            if (/已移除|已连接/.test(e.text)) ws.send(JSON.stringify({ type: "ListMcp" }));
+            if (/已删除 memory:/.test(e.text)) sendCmd({ type: "ListMemory", session_id: sessionIdRef.current });
+            if (/已移除|已连接/.test(e.text)) sendCmd({ type: "ListMcp" });
           }
           break;
         case "PermissionRequest":
@@ -597,10 +729,12 @@ function App() {
             duration_ms: e.duration_ms,
             usage: e.usage,
             cost_usd: e.cost_usd,
+            // 服务端补发本轮最后一条消息的 seq：新消息立刻可分支，不用重进会话
+            seq: it.seq ?? e.last_seq ?? undefined,
           }));
           if (sessionIdRef.current)
-            ws.send(JSON.stringify({ type: "GetSessionCost", session_id: sessionIdRef.current }));
-          ws.send(JSON.stringify({ type: "ListSessions" }));
+            sendCmd({ type: "GetSessionCost", session_id: sessionIdRef.current });
+          sendCmd({ type: "ListSessions" });
           // 队列里有排队的消息：当前任务结束，自动发出第一条
           {
             const q = queueRef.current;
@@ -635,7 +769,9 @@ function App() {
 
   useEffect(() => {
     connect();
-    return () => ws && ws.close();
+    return () => {
+      ws?.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -654,15 +790,15 @@ function App() {
   // 设置页数据拉取：进入面板或连接建立时拉取
   useEffect(() => {
     if (view !== "settings" || conn !== "open") return;
-    if (section === "memory") ws.send(JSON.stringify({ type: "ListMemory", session_id: sessionIdRef.current }));
-    if (section === "mcp") ws.send(JSON.stringify({ type: "ListMcp" }));
-    if (section === "skills") ws.send(JSON.stringify({ type: "ListSkills" }));
-    if (section === "models") ws.send(JSON.stringify({ type: "GetSettings" }));
-    if (section === "general") ws.send(JSON.stringify({ type: "GetStats" }));
+    if (section === "memory") sendCmd({ type: "ListMemory", session_id: sessionIdRef.current });
+    if (section === "mcp") sendCmd({ type: "ListMcp" });
+    if (section === "skills") sendCmd({ type: "ListSkills" });
+    if (section === "models") sendCmd({ type: "GetSettings" });
+    if (section === "general") sendCmd({ type: "GetStats" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, section, conn]);
 
-  const composeMessage = (text) => {
+  const composeMessage = (text: string): string => {
     if (!attachments.length) return text;
     const blocks = attachments
       .map((a) => `--- 附件文件: ${a.path}${a.truncated ? "（已截断）" : ""} ---\n${a.content}`)
@@ -678,15 +814,12 @@ function App() {
       setContentResults([]);
       return;
     }
-    const t = setTimeout(
-      () => ws.send(JSON.stringify({ type: "SearchContent", query: q, limit: 20 })),
-      300
-    );
+    const t = setTimeout(() => sendCmd({ type: "SearchContent", query: q, limit: 20 }), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQ, view, conn]);
 
-  const onPaste = (e) => {
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(e.clipboardData?.files || []).filter((f) =>
       f.type.startsWith("image/")
     );
@@ -699,18 +832,18 @@ function App() {
       }
       const reader = new FileReader();
       reader.onload = () => {
-        if (connRef.current === "open") {
-          ws.send(JSON.stringify({ type: "UploadImage", data_url: reader.result }));
+        if (connRef.current === "open" && typeof reader.result === "string") {
+          sendCmd({ type: "UploadImage", data_url: reader.result });
         }
       };
       reader.readAsDataURL(f);
     });
   };
 
-  const send = () => {
+  const sendMessage = () => {
     const text = input.trim();
     if (!text || connRef.current !== "open" || !sessionIdRef.current) return;
-    const imgs = pasteImages.map((p) => ({ media_type: p.media_type, data: p.data }));
+    const imgs: Img[] = pasteImages.map((p) => ({ media_type: p.media_type, data: p.data }));
     if (runningRef.current) {
       // 任务运行中：入队等待，当前任务结束（RunFinished）后自动发出
       setQueue((q) => [...q, { id: nextId++, text, composed: composeMessage(text), imgs }]);
@@ -725,43 +858,62 @@ function App() {
   // 停止当前任务（服务端 CancelRun → run cancelled Notice 复位运行态）
   const stopRun = () => {
     if (connRef.current === "open" && sessionIdRef.current)
-      ws.send(JSON.stringify({ type: "CancelRun", session_id: sessionIdRef.current }));
+      sendCmd({ type: "CancelRun", session_id: sessionIdRef.current });
   };
   // 分支会话：从指定消息（含）复制上下文开启新会话，服务端自动切入
-  const forkSession = (it) => {
+  const forkSession = (it: { seq?: number }) => {
     if (connRef.current !== "open" || !sessionIdRef.current || it.seq == null) return;
-    ws.send(JSON.stringify({ type: "ForkSession", session_id: sessionIdRef.current, upto_seq: it.seq }));
+    sendCmd({ type: "ForkSession", session_id: sessionIdRef.current, upto_seq: it.seq });
   };
-  const queueBump = (id) =>
+  // 复制消息原文：clipboard API 不可用时（file:// 权限等）退回 execCommand
+  const copyMsg = async (it: { id: number; text?: string }) => {
+    const text = it.text || "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopiedId(it.id);
+    setTimeout(() => setCopiedId((c) => (c === it.id ? null : c)), 1200);
+  };
+  const queueBump = (id: number) =>
     setQueue((q) => {
       const idx = q.findIndex((x) => x.id === id);
       if (idx <= 0) return q;
       const item = q[idx];
       return [item, ...q.filter((x) => x.id !== id)];
     });
-  const queueEdit = (qitem) => {
+  const queueEdit = (qitem: QueueItem) => {
     setInput(qitem.text);
     setQueue((q) => q.filter((x) => x.id !== qitem.id));
   };
-  const queueDelete = (id) => setQueue((q) => q.filter((x) => x.id !== id));
+  const queueDelete = (id: number) => setQueue((q) => q.filter((x) => x.id !== id));
 
   const submitAttach = () => {
     const p = attachPath.trim();
-    if (p && conn === "open") ws.send(JSON.stringify({ type: "ReadWorkspaceFile", path: p }));
+    if (p && conn === "open") sendCmd({ type: "ReadWorkspaceFile", path: p });
     else setShowAttach(false);
   };
 
   const newSession = () => {
     if (connRef.current !== "open") return;
     setView("chat");
-    ws.send(JSON.stringify({ type: "CreateSession" }));
+    sendCmd({ type: "CreateSession" });
   };
-  const resume = (id) => {
+  const resume = (id: string) => {
     setView("chat");
-    if (connRef.current === "open") ws.send(JSON.stringify({ type: "ResumeSession", session_id: id }));
+    if (connRef.current === "open") sendCmd({ type: "ResumeSession", session_id: id });
   };
 
-  const pickProvider = (key) =>
+  const pickProvider = (key: string) =>
     setModelForm((f) => ({ ...f, provider: key, api_base: f.api_base || PROVIDER_BASES[key] || "" }));
 
   const saveSettings = () => {
@@ -770,62 +922,63 @@ function App() {
       modelForm.provider === "custom"
         ? `openai/${modelForm.modelName.trim()}`
         : `${modelForm.provider}/${modelForm.modelName.trim()}`;
-    const msg = { type: "SetModel", model, api_base: modelForm.api_base.trim() };
-    if (modelForm.api_key.trim()) msg.api_key = modelForm.api_key.trim();
-    ws.send(JSON.stringify(msg));
+    sendCmd({
+      type: "SetModel",
+      model,
+      api_base: modelForm.api_base.trim(),
+      ...(modelForm.api_key.trim() ? { api_key: modelForm.api_key.trim() } : {}),
+    });
   };
 
-  const switchModel = (model) =>
-    conn === "open" && model && ws.send(JSON.stringify({ type: "SwitchModel", model }));
-  const deleteModelConfig = (model) =>
-    conn === "open" && ws.send(JSON.stringify({ type: "DeleteModelConfig", model }));
+  const switchModel = (model: string) =>
+    conn === "open" && model && sendCmd({ type: "SwitchModel", model });
+  const deleteModelConfig = (model: string) =>
+    conn === "open" && sendCmd({ type: "DeleteModelConfig", model });
 
   // 连通性测试：用当前表单配置发一次最小请求（api_key 留空时服务端沿用已保存配置）
   const testModel = () => {
     if (conn !== "open" || !modelForm.modelName.trim()) return;
     setTestState({ status: "running" });
-    ws.send(
-      JSON.stringify({
-        type: "TestModel",
-        model: composedModel,
-        api_key: modelForm.api_key.trim(),
-        api_base: modelForm.api_base.trim(),
-      })
-    );
+    sendCmd({
+      type: "TestModel",
+      model: composedModel,
+      api_key: modelForm.api_key.trim(),
+      api_base: modelForm.api_base.trim(),
+    });
   };
-  const removeMcp = (name) =>
-    conn === "open" && ws.send(JSON.stringify({ type: "RemoveMcpServer", name }));
+  const removeMcp = (name: string) =>
+    conn === "open" && sendCmd({ type: "RemoveMcpServer", name });
 
-  const respond = (answer) => {
+  const respond = (answer: "yes" | "always" | "no") => {
     if (!permission) return;
-    ws.send(JSON.stringify({ type: "RespondPermission", request_id: permission.request_id, answer }));
+    sendCmd({ type: "RespondPermission", request_id: permission.request_id, answer });
     setPermission(null);
   };
-  const setPerm = (mode) => {
+  const setPerm = (mode: PermMode) => {
     setPermMode(mode);
-    if (conn === "open") ws.send(JSON.stringify({ type: "SetPermissionMode", mode }));
+    if (conn === "open") sendCmd({ type: "SetPermissionMode", mode });
   };
-  const setThink = (level) => {
+  const setThink = (level: ThinkLevel) => {
     setThinking(level);
-    if (conn === "open") ws.send(JSON.stringify({ type: "SetThinking", level }));
+    if (conn === "open") sendCmd({ type: "SetThinking", level });
   };
 
   const dot = conn === "open" ? "ok" : conn === "connecting" ? "" : "bad";
-  const stateText = {
-    attached: "attached", started: "sidecar started", restarted: "旧 daemon 已替换", unavailable: "daemon NOT found",
-  }[SERVER_STATE] || "";
+  const stateText = STATE_TEXT[SERVER_STATE] || "";
   const currentModel = settings.model || "(默认)";
   const currentSession = (sessions || []).find((s) => s.session_id === sessionId);
   const currentTitle = currentSession?.title || (sessionId ? `新会话 ${sessionId.slice(0, 6)}` : "未开始");
   // 左侧消息导航（ZCode 式 outline）：用户/助手消息各一条，宽度随内容长度
-  const outlineItems = items.filter((it) => (it.kind === "user" || it.kind === "assistant") && it.text);
+  const outlineItems = items.filter(
+    (it): it is UserItem | AssistantItem => (it.kind === "user" || it.kind === "assistant") && !!it.text
+  );
   const composedModel =
     modelForm.provider === "custom"
       ? `openai/${modelForm.modelName.trim()}`
       : `${modelForm.provider}/${modelForm.modelName.trim()}`;
   const composedHint = modelForm.modelName.trim() ? `实际模型串: ${composedModel}` : "填写模型名称后自动拼接 provider 前缀";
 
-  const fmtDur = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+  const fmtDur = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 
   // 首启引导：模型列表为空且从未配置过 key 时全屏展示（首件事是连接自己的模型，不是登录）
   const showOnboard =
@@ -882,7 +1035,7 @@ function App() {
           <select value={modelForm.provider} onChange={(e) => pickProvider(e.target.value)}>
             {PROVIDERS.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
-          <div className="meta">{(PROVIDERS.find((p) => p.key === modelForm.provider) || {}).hint}</div>
+          <div className="meta">{PROVIDERS.find((p) => p.key === modelForm.provider)?.hint}</div>
         </div>
         <div className="prow">
           <label>模型名称（自由填写，不做预设限制）</label>
@@ -932,7 +1085,7 @@ function App() {
                 <b>{b.label}</b> <span className="meta">{b.chars}/{b.limit} chars</span>
                 <div className="mempv">{b.value || "(empty)"}</div>
               </div>
-              <button className="danger" onClick={() => ws.send(JSON.stringify({ type: "DeleteMemoryBlock", session_id: sessionId, label: b.label }))}>删除</button>
+              <button className="danger" onClick={() => sendCmd({ type: "DeleteMemoryBlock", session_id: sessionId, label: b.label })}>删除</button>
             </div>
           ))}
         </div>
@@ -941,10 +1094,10 @@ function App() {
           {memory.files.length === 0 && <div className="meta">还没有长期记忆文件。</div>}
           {memory.files.map((f) => (
             <div key={f.path} className="memrow">
-              <div className="clickable" onClick={() => ws.send(JSON.stringify({ type: "ReadMemoryFile", path: f.path }))}>
+              <div className="clickable" onClick={() => sendCmd({ type: "ReadMemoryFile", path: f.path })}>
                 <b>{f.path}</b> <span className="meta">{f.size} bytes · 点击查看</span>
               </div>
-              <button className="danger" onClick={() => ws.send(JSON.stringify({ type: "DeleteMemoryFile", path: f.path }))}>删除</button>
+              <button className="danger" onClick={() => sendCmd({ type: "DeleteMemoryFile", path: f.path })}>删除</button>
             </div>
           ))}
           {memFile && (
@@ -973,7 +1126,7 @@ function App() {
               <span className="tag">{s.transport}</span> <span className="tag">{s.source}</span>
               <div className="mempv">{s.target} · {s.tools} tools</div>
             </div>
-            <button className="danger" onClick={() => removeMcp && ws.send(JSON.stringify({ type: "RemoveMcpServer", name: s.name }))}>移除</button>
+            <button className="danger" onClick={() => sendCmd({ type: "RemoveMcpServer", name: s.name })}>移除</button>
           </div>
         ))}
         <div className="card-title" style={{ marginTop: 18 }}>添加</div>
@@ -983,7 +1136,7 @@ function App() {
         </div>
         <div className="prow">
           <label>传输</label>
-          <select value={mcpForm.transport} onChange={(e) => setMcpForm((f) => ({ ...f, transport: e.target.value }))}>
+          <select value={mcpForm.transport} onChange={(e) => setMcpForm((f) => ({ ...f, transport: e.target.value as "stdio" | "http" }))}>
             <option value="stdio">stdio（本地命令）</option>
             <option value="http">HTTP（Streamable HTTP）</option>
           </select>
@@ -1005,10 +1158,10 @@ function App() {
             <input value={mcpForm.url} onChange={(e) => setMcpForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://example.com/mcp" />
           </div>
         )}
-        <button className="savebtn" onClick={() => conn === "open" && mcpForm.name.trim() && ws.send(JSON.stringify({
+        <button className="savebtn" onClick={() => conn === "open" && mcpForm.name.trim() && sendCmd({
           type: "AddMcpServer", name: mcpForm.name.trim(), transport: mcpForm.transport,
           command: mcpForm.command, args: mcpForm.args, url: mcpForm.url,
-        }))}>添加并连接</button>
+        })}>添加并连接</button>
       </div>
     </>
   );
@@ -1045,7 +1198,7 @@ function App() {
         <div className="kvrow">
           <span>数据目录</span>
           <b style={{ flex: 1, minWidth: 0, wordBreak: "break-all" }}>{stats?.data_dir || "~/.my-harness/"}</b>
-          <button onClick={() => conn === "open" && ws.send(JSON.stringify({ type: "OpenDataDir" }))}>
+          <button onClick={() => conn === "open" && sendCmd({ type: "OpenDataDir" })}>
             打开
           </button>
         </div>
@@ -1131,7 +1284,7 @@ function App() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       const n = groupInput.trim();
-                      if (n && conn === "open") ws.send(JSON.stringify({ type: "CreateSessionGroup", name: n }));
+                      if (n && conn === "open") sendCmd({ type: "CreateSessionGroup", name: n });
                       setGroupInput("");
                       setShowGroupInput(false);
                     }
@@ -1173,7 +1326,7 @@ function App() {
             : sessions || [];
           if (q && filtered.length === 0) return <div className="meta" style={{ padding: "4px 14px" }}>无匹配会话</div>;
 
-          const sessionRow = (s) => (
+          const sessionRow = (s: SessionInfo) => (
             <div
               key={s.session_id}
               className={"sess" + (s.session_id === sessionId ? " active" : "")}
@@ -1187,10 +1340,10 @@ function App() {
                     className="ren"
                     autoFocus
                     value={renaming.value}
-                    onChange={(e) => setRenaming((r) => ({ ...r, value: e.target.value }))}
+                    onChange={(e) => setRenaming((r) => (r ? { ...r, value: e.target.value } : r))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        ws.send(JSON.stringify({ type: "RenameSession", session_id: s.session_id, title: renaming.value }));
+                        sendCmd({ type: "RenameSession", session_id: s.session_id, title: renaming.value });
                         setRenaming(null);
                       } else if (e.key === "Escape") {
                         setRenaming(null);
@@ -1216,7 +1369,7 @@ function App() {
                       className="icon danger"
                       title="确认删除"
                       onClick={() => {
-                        ws.send(JSON.stringify({ type: "DeleteSession", session_id: s.session_id }));
+                        sendCmd({ type: "DeleteSession", session_id: s.session_id });
                         setConfirmDelete(null);
                       }}
                     >
@@ -1235,7 +1388,7 @@ function App() {
                           autoFocus
                           defaultValue={s.group || ""}
                           onChange={(e) => {
-                            ws.send(JSON.stringify({ type: "SetSessionGroup", session_id: s.session_id, group: e.target.value }));
+                            sendCmd({ type: "SetSessionGroup", session_id: s.session_id, group: e.target.value });
                             setMoveSession(null);
                           }}
                           onBlur={() => setMoveSession(null)}
@@ -1258,7 +1411,7 @@ function App() {
                       className="icon"
                       title={s.pinned ? "取消置顶" : "置顶"}
                       onClick={() =>
-                        ws.send(JSON.stringify({ type: "PinSession", session_id: s.session_id, pinned: !s.pinned }))
+                        sendCmd({ type: "PinSession", session_id: s.session_id, pinned: !s.pinned })
                       }
                     >
                       <Icon name="pin" filled={s.pinned} />
@@ -1276,7 +1429,7 @@ function App() {
           if (groupBy === "group") {
             const grouped = filtered.filter((s) => s.group);
             const ungrouped = filtered.filter((s) => !s.group);
-            const groupBlock = (gname, items, hint) => (
+            const groupBlock = (gname: string | null, groupItems: SessionInfo[], hint?: string) => (
               <div key={gname || "__ungrouped__"}>
                 {gname ? (
                   <div
@@ -1290,7 +1443,7 @@ function App() {
                     onDrop={(e) => {
                       e.preventDefault();
                       const sid = e.dataTransfer.getData("text/session-id");
-                      if (sid) ws.send(JSON.stringify({ type: "SetSessionGroup", session_id: sid, group: gname }));
+                      if (sid) sendCmd({ type: "SetSessionGroup", session_id: sid, group: gname });
                       setDropTarget(null);
                     }}
                   >
@@ -1303,7 +1456,7 @@ function App() {
                         onKeyDown={(e) => {
                           e.stopPropagation();
                           if (e.key === "Enter") {
-                            ws.send(JSON.stringify({ type: "RenameSessionGroup", name: gname, new_name: groupRenaming.value }));
+                            sendCmd({ type: "RenameSessionGroup", name: gname, new_name: groupRenaming.value });
                             setGroupRenaming(null);
                           } else if (e.key === "Escape") {
                             setGroupRenaming(null);
@@ -1316,14 +1469,14 @@ function App() {
                       </span>
                     )}
                     <span className="gact" onClick={(e) => e.stopPropagation()}>
-                      {items.length}
+                      {groupItems.length}
                       <button className="icon" title="重命名分组" onClick={() => setGroupRenaming({ old: gname, value: gname })}>
                         <Icon name="edit" size={11} />
                       </button>
                       <button
                         className="icon danger"
                         title="删除分组（组内会话移至未分组）"
-                        onClick={() => ws.send(JSON.stringify({ type: "DeleteSessionGroup", name: gname }))}
+                        onClick={() => sendCmd({ type: "DeleteSessionGroup", name: gname })}
                       >
                         <Icon name="x" size={11} />
                       </button>
@@ -1332,12 +1485,12 @@ function App() {
                 ) : (
                   <div className="ghead" style={{ cursor: "default" }}>
                     <span>未分组</span>
-                    <span>{items.length}</span>
+                    <span>{groupItems.length}</span>
                   </div>
                 )}
                 {(!gname || !collapsedGroups["group:" + gname]) &&
-                  (items.length ? (
-                    items.map(sessionRow)
+                  (groupItems.length ? (
+                    groupItems.map(sessionRow)
                   ) : (
                     <div className="drop-hint">{hint || "拖拽会话到这里"}</div>
                   ))}
@@ -1436,17 +1589,17 @@ function App() {
               );
             }
             if (it.kind === "tool") {
-              const m = it.meta || {};
+              const m = it.meta;
               return (
                 <div
                   key={it.id}
                   className={"tool " + (it.status === "done" ? "done" : it.status === "fail" ? "fail" : "")}
                   title={it.args || it.tool}
                 >
-                  <span className="ticon"><Icon name={m.icon || "zap"} size={12} /></span>
-                  <span className="tverb">{m.verb || it.tool}</span>
-                  {m.target ? <span className="ttarget">{m.target}</span> : null}
-                  {m.add != null ? <span className="tadd">+{m.add}</span> : null}
+                  <span className="ticon"><Icon name={m?.icon || "zap"} size={12} /></span>
+                  <span className="tverb">{m?.verb || it.tool}</span>
+                  {m?.target ? <span className="ttarget">{m.target}</span> : null}
+                  {m?.add != null ? <span className="tadd">+{m.add}</span> : null}
                   <span className="tstatus">
                     {it.status === "running" ? "…running" : it.status === "done" ? "✓" : `✗ ${it.detail || ""}`}
                   </span>
@@ -1456,13 +1609,6 @@ function App() {
             if (it.kind === "user") {
               return (
                 <div key={it.id} className="msg user" data-mid={it.id}>
-                  {it.seq != null && (
-                    <div className="msg-actions">
-                      <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
-                        <Icon name="branch" size={13} />
-                      </button>
-                    </div>
-                  )}
                   <div className="bubble">
                     {it.images && it.images.length > 0 && (
                       <div className="imgs">
@@ -1478,29 +1624,44 @@ function App() {
                     )}
                     {it.text}
                   </div>
+                  {/* 分支按钮在文档流里（悬停显形），不再悬浮压字、也不会因移出消息而点不到 */}
+                  <div className="msg-foot user-foot">
+                    {it.seq != null && (
+                      <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
+                        <Icon name="branch" size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             }
             return (
               <div key={it.id} className={"msg " + it.kind} data-mid={it.kind === "assistant" ? it.id : undefined}>
-                {it.kind === "assistant" && it.seq != null && (
-                  <div className="msg-actions">
-                    <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
-                      <Icon name="branch" size={13} />
-                    </button>
-                  </div>
-                )}
                 {it.kind === "assistant" && it.text ? (
                   <div className="md" dangerouslySetInnerHTML={{ __html: mdRender(it.text) }} />
                 ) : (
                   it.text
                 )}
                 {it.kind === "assistant" && it.text === "" ? <span className="cursor" /> : null}
-                {it.kind === "assistant" && it.duration_ms != null ? (
-                  <div className="dur">
-                    ⏱ {fmtDur(it.duration_ms)}
-                    {it.usage ? ` · ↑${fmtTok(it.usage.input_tokens)} ↓${fmtTok(it.usage.output_tokens)} tok` : ""}
-                    {it.cost_usd != null ? ` · ${fmtCost(it.cost_usd)}` : ""}
+                {it.kind === "assistant" && (it.seq != null || it.duration_ms != null) ? (
+                  <div className="msg-foot">
+                    {it.text ? (
+                      <button className="mact" title="复制内容" onClick={() => copyMsg(it)}>
+                        <Icon name={copiedId === it.id ? "check" : "copy"} size={13} />
+                      </button>
+                    ) : null}
+                    {it.seq != null && (
+                      <button className="mact" title="从此消息开启分支会话" onClick={() => forkSession(it)}>
+                        <Icon name="branch" size={13} />
+                      </button>
+                    )}
+                    {it.duration_ms != null ? (
+                      <span className="dur">
+                        ⏱ {fmtDur(it.duration_ms)}
+                        {it.usage ? ` · ↑${fmtTok(it.usage.input_tokens)} ↓${fmtTok(it.usage.output_tokens)} tok` : ""}
+                        {it.cost_usd != null ? ` · ${fmtCost(it.cost_usd)}` : ""}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1582,7 +1743,7 @@ function App() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                send();
+                sendMessage();
               }
             }}
             disabled={conn !== "open"}
@@ -1601,7 +1762,7 @@ function App() {
               </button>
               {permOpen && (
                 <div className="pmenu">
-                  {Object.entries(PERM_META).map(([k, m]) => (
+                  {(Object.entries(PERM_META) as [PermMode, { label: string; desc: string; icon: IconName }][]).map(([k, m]) => (
                     <div
                       key={k}
                       className={"pitem" + (k === permMode ? " active" : "")}
@@ -1622,7 +1783,12 @@ function App() {
               )}
             </div>
             <div style={{ flex: 1 }} />
-            <select className="ctl" value={thinking} title="思考档位" onChange={(e) => setThink(e.target.value)}>
+            <select
+              className="ctl"
+              value={thinking}
+              title="思考档位"
+              onChange={(e) => setThink(e.target.value as ThinkLevel)}
+            >
               {Object.entries(THINKING_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>思考: {v}</option>
               ))}
@@ -1648,7 +1814,7 @@ function App() {
             {running ? (
               <button className="send stop" title="停止当前任务" onClick={stopRun}>■</button>
             ) : (
-              <button className="send" onClick={send} disabled={conn !== "open" || !input.trim()}>↑</button>
+              <button className="send" onClick={sendMessage} disabled={conn !== "open" || !input.trim()}>↑</button>
             )}
           </div>
         </div>
@@ -1666,7 +1832,7 @@ function App() {
               <select value={modelForm.provider} onChange={(e) => pickProvider(e.target.value)}>
                 {PROVIDERS.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
               </select>
-              <div className="meta">{(PROVIDERS.find((p) => p.key === modelForm.provider) || {}).hint}</div>
+              <div className="meta">{PROVIDERS.find((p) => p.key === modelForm.provider)?.hint}</div>
             </div>
             <div className="prow">
               <label>模型名称（自由填写，不做预设限制）</label>
@@ -1723,4 +1889,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")!).render(<App />);

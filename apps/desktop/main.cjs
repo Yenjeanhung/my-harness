@@ -1,24 +1,45 @@
-// Electron 主进程：确保 my-harness daemon 在跑（附着已有 → 内嵌 sidecar → PATH 上的 harness），
-// 再打开窗口。渲染进程是纯 Web 页面，连 ws://127.0.0.1:<port>/ws —— 与 CLI 共用同一协议。
-const { app, BrowserWindow, dialog, Menu } = require("electron");
-const { spawn, exec } = require("child_process");
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
-const PORT = process.env.MYHARNESS_PORT || "8765";
-const HTTP_BASE = `http://127.0.0.1:${PORT}`;
-const WS_URL = `ws://127.0.0.1:${PORT}/ws`;
-const APP_VERSION = app.getVersion(); // 与 Python 端 harness.__version__ 保持同步
-let sidecar = null;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
+// main.ts
+var import_electron = require("electron");
+var import_child_process = require("child_process");
+var import_http = __toESM(require("http"));
+var import_fs = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+var PORT = process.env.MYHARNESS_PORT || "8765";
+var HTTP_BASE = `http://127.0.0.1:${PORT}`;
+var WS_URL = `ws://127.0.0.1:${PORT}/ws`;
+var APP_VERSION = import_electron.app.getVersion();
+var sidecar = null;
+var staleRestarted = false;
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function probeHealth() {
   return new Promise((resolve) => {
-    const req = http.get(`${HTTP_BASE}/health`, (res) => {
+    const req = import_http.default.get(`${HTTP_BASE}/health`, (res) => {
       let body = "";
-      res.on("data", (c) => (body += c));
+      res.on("data", (c) => body += c);
       res.on("end", () => {
         try {
           const j = JSON.parse(body);
@@ -35,13 +56,11 @@ function probeHealth() {
     });
   });
 }
-
 function killPortListeners(port) {
-  // 仅在版本握手失败（旧 daemon / 未知服务占口）时调用
   if (process.platform !== "win32") return Promise.resolve();
   return new Promise((resolve) => {
-    exec(`netstat -ano | findstr LISTENING | findstr :${port}`, (err, stdout) => {
-      const pids = new Set();
+    (0, import_child_process.exec)(`netstat -ano | findstr LISTENING | findstr :${port}`, (err, stdout) => {
+      const pids = /* @__PURE__ */ new Set();
       (stdout || "").split("\n").forEach((line) => {
         const parts = line.trim().split(/\s+/);
         if (parts.length >= 5 && parts[3] === "LISTENING") pids.add(parts[4]);
@@ -49,37 +68,39 @@ function killPortListeners(port) {
       const arr = [...pids];
       if (!arr.length) return resolve();
       let done = 0;
-      arr.forEach((pid) =>
-        exec(`taskkill /F /PID ${pid}`, () => {
+      arr.forEach(
+        (pid) => (0, import_child_process.exec)(`taskkill /F /PID ${pid}`, () => {
           if (++done === arr.length) resolve();
         })
       );
     });
   });
 }
-
 async function ensureServer() {
   const h = await probeHealth();
   if (h.ok) {
     if (h.version === APP_VERSION) return "attached";
-    // 版本不匹配（含旧版无 version 字段）：清掉旧 daemon，用内嵌 sidecar 重启
     await killPortListeners(PORT);
     await sleep(800);
     staleRestarted = true;
   }
   const attempts = [];
   if (process.resourcesPath) {
-    const f = path.join(process.resourcesPath, "harness-server.exe");
-    if (fs.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT] });
+    const f = import_path.default.join(process.resourcesPath, "harness-server.exe");
+    if (import_fs.default.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT] });
   }
   attempts.push({
     cmd: process.platform === "win32" ? "harness.exe" : "harness",
-    args: ["serve", "--port", PORT],
+    args: ["serve", "--port", PORT]
   });
   for (const a of attempts) {
+    const cmd = a.file || a.cmd;
+    if (!cmd) continue;
     try {
-      sidecar = spawn(a.file || a.cmd, a.args, { stdio: "ignore" });
-      sidecar.on("error", () => {});
+      const child = (0, import_child_process.spawn)(cmd, a.args, { stdio: "ignore" });
+      child.on("error", () => {
+      });
+      sidecar = child;
     } catch {
       sidecar = null;
       continue;
@@ -91,39 +112,34 @@ async function ensureServer() {
     }
     try {
       sidecar.kill();
-    } catch {}
+    } catch {
+    }
     sidecar = null;
   }
   return "unavailable";
 }
-
-let staleRestarted = false;
-
-app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null); // 去掉默认菜单栏（File/Edit/View/...）
+import_electron.app.whenReady().then(async () => {
+  import_electron.Menu.setApplicationMenu(null);
   const serverState = await ensureServer();
   if (serverState === "unavailable") {
-    dialog.showMessageBox({
+    import_electron.dialog.showMessageBox({
       type: "warning",
-      message: "my-harness daemon 未找到",
-      detail:
-        "未能连接或启动 harness serve。\n请确认 `harness` 在 PATH 中（pip install -e .），" +
-        "或重新打包以内嵌 harness-server.exe。",
+      message: "my-harness daemon \u672A\u627E\u5230",
+      detail: "\u672A\u80FD\u8FDE\u63A5\u6216\u542F\u52A8 harness serve\u3002\n\u8BF7\u786E\u8BA4 `harness` \u5728 PATH \u4E2D\uFF08pip install -e .\uFF09\uFF0C\u6216\u91CD\u65B0\u6253\u5305\u4EE5\u5185\u5D4C harness-server.exe\u3002"
     });
   }
-  const win = new BrowserWindow({
+  const win = new import_electron.BrowserWindow({
     width: 1280,
     height: 880,
     backgroundColor: "#111318",
     title: "My-Harness",
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
   });
-  win.loadFile(path.join(__dirname, "renderer", "index.html"), {
-    query: { ws: WS_URL, server: serverState },
+  win.loadFile(import_path.default.join(__dirname, "renderer", "index.html"), {
+    query: { ws: WS_URL, server: serverState }
   });
 });
-
-app.on("window-all-closed", () => {
+import_electron.app.on("window-all-closed", () => {
   if (sidecar) sidecar.kill();
-  app.quit();
+  import_electron.app.quit();
 });

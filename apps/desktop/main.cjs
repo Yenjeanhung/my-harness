@@ -215,6 +215,15 @@ import_electron.ipcMain.on("term-kill", (_e, id) => {
 });
 import_electron.app.whenReady().then(async () => {
   import_electron.Menu.setApplicationMenu(null);
+  const oldData = import_path.default.join(import_electron.app.getPath("appData"), "my-harness-desktop");
+  const newData = import_electron.app.getPath("userData");
+  try {
+    if (import_path.default.resolve(oldData) !== import_path.default.resolve(newData) && import_fs.default.existsSync(import_path.default.join(oldData, "projects.json")) && !import_fs.default.existsSync(import_path.default.join(newData, "projects.json"))) {
+      import_fs.default.mkdirSync(newData, { recursive: true });
+      import_fs.default.copyFileSync(import_path.default.join(oldData, "projects.json"), import_path.default.join(newData, "projects.json"));
+    }
+  } catch {
+  }
   import_electron.ipcMain.handle("pick-folder", async () => {
     if (!win) return null;
     const r = await import_electron.dialog.showOpenDialog(win, {
@@ -258,11 +267,13 @@ import_electron.app.whenReady().then(async () => {
       detail: "\u672A\u80FD\u8FDE\u63A5\u6216\u542F\u52A8 harness serve\u3002\n\u8BF7\u786E\u8BA4 `harness` \u5728 PATH \u4E2D\uFF08pip install -e .\uFF09\uFF0C\u6216\u91CD\u65B0\u6253\u5305\u4EE5\u5185\u5D4C harness-server.exe\u3002"
     });
   }
+  const iconPath = import_path.default.join(__dirname, "build", "icon.ico");
   win = new import_electron.BrowserWindow({
     width: 1280,
     height: 880,
     backgroundColor: "#111318",
-    title: "My-Harness",
+    title: "Y Harness",
+    ...import_fs.default.existsSync(iconPath) ? { icon: iconPath } : {},
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

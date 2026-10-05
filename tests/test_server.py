@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import shutil
 
 import json
 from pathlib import Path
@@ -591,3 +592,128 @@ def test_ws_usage_streamed(tmp_path):
         assert usages[-1]["context_tokens"] == 10
         assert usages[-1]["context_window"] > 0
         assert usages[-1]["static_tokens"] > 0
+
+
+def _mkfile(ws, rel, content="x"):
+    p = ws / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def test_ws_file_workbench_crud(tmp_path):
+    """工作台文件命令：ListDir/ReadFile/Write/Create/Move/Delete 全链路。"""
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        ws.receive_json()
+
+        def send_wait(cmd):
+            ws.send_json(cmd)
+            while True:
+                r = ws.receive_json()
+                if r["type"] in ("Notice", "DirListing", "FileContent", "FileSaved", "SearchResult", "Error", "GitStatus", "GitDiff", "FileBase"):
+                    return r
+
+        _mkfile(tmp_path, "src/a.py", "print('hi')\nsecond\n")
+        (tmp_path / ".venv").mkdir()
+        _mkfile(tmp_path, ".venv/junk.txt", "nope")
+
+        r = send_wait({"type": "ListDir", "path": ""})
+        assert r["type"] == "DirListing"
+        names = {e["name"]: e["kind"] for e in r["entries"]}
+        assert names["src"] == "dir" and ".venv" not in names and "src" in names
+
+        r = send_wait({"type": "ReadFile", "path": "src/a.py"})
+        assert r["type"] == "FileContent" and "print" in r["content"] and not r["binary"]
+
+        r = send_wait({"type": "WriteWorkspaceFile", "path": "src/b.txt", "content": "hello"})
+        assert r["type"] == "FileSaved" and r["path"] == "src/b.txt"
+        assert (tmp_path / "src/b.txt").read_text(encoding="utf-8") == "hello"
+
+        r = send_wait({"type": "CreateEntry", "path": "src/sub", "kind": "dir"})
+        assert r["type"] == "Notice" and (tmp_path / "src/sub").is_dir()
+
+        r = send_wait({"type": "MoveEntry", "path": "src/b.txt", "to": "src/sub/b.txt"})
+        assert r["type"] == "Notice" and (tmp_path / "src/sub/b.txt").exists()
+
+        r = send_wait({"type": "DeleteEntry", "path": "src/sub/b.txt"})
+        assert r["type"] == "Notice" and not (tmp_path / "src/sub/b.txt").exists()
+        assert any("trash" in p.name for p in (tmp_path / ".my-harness").iterdir())
+
+        # 越界路径拒绝
+        r = send_wait({"type": "ReadFile", "path": "../escape.txt"})
+        assert r["type"] == "Error"
+
+
+def test_ws_read_file_binary_and_truncate(tmp_path):
+    _mkfile(tmp_path, "bin.dat", None) if False else (tmp_path / "bin.dat").write_bytes(b"ab\0cd")
+    big = tmp_path / "big.txt"
+    big.write_text("x" * (1024 * 1024 + 100), encoding="utf-8")
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        ws.receive_json()
+
+        ws.send_json({"type": "ReadFile", "path": "bin.dat"})
+        r = ws.receive_json()
+        while r["type"] not in ("FileContent", "Error"):
+            r = ws.receive_json()
+        assert r["type"] == "FileContent" and r["binary"] is True
+
+        ws.send_json({"type": "ReadFile", "path": "big.txt"})
+        r = ws.receive_json()
+        while r["type"] not in ("FileContent", "Error"):
+            r = ws.receive_json()
+        assert r["truncated"] is True and len(r["content"]) < 1024 * 1024 + 100
+
+
+def test_ws_search_workspace(tmp_path):
+    _mkfile(tmp_path, "src/a.py", "def foo():\n    return 1\n")
+    _mkfile(tmp_path, "docs/b.md", "foo bar\n")
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        ws.receive_json()
+        ws.send_json({"type": "SearchWorkspace", "query": "foo"})
+        r = ws.receive_json()
+        while r["type"] not in ("SearchResult", "Error"):
+            r = ws.receive_json()
+        assert r["type"] == "SearchResult"
+        paths = {h["path"] for h in r["results"]}
+        assert paths == {"src/a.py", "docs/b.md"}
+        assert r["results"][0]["line"] >= 1
+
+
+def test_ws_git_status_diff_base(tmp_path):
+    if not shutil.which("git"):
+        import pytest
+        pytest.skip("git not installed")
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"], check=True)
+    _mkfile(tmp_path, "tracked.py", "old\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.py"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    _mkfile(tmp_path, "tracked.py", "new\n")
+    _mkfile(tmp_path, "untracked.py", "u\n")
+
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "CreateSession"})
+        ws.receive_json()
+
+        ws.send_json({"type": "GitStatus"})
+        r = ws.receive_json()
+        while r["type"] not in ("GitStatus", "Error"):
+            r = ws.receive_json()
+        assert r["type"] == "GitStatus" and r["repo"] is True
+        codes = {f["path"]: f["code"] for f in r["files"]}
+        assert codes.get("tracked.py") == "M" and codes.get("untracked.py") == "??"
+
+        ws.send_json({"type": "GitFileBase", "path": "tracked.py"})
+        r = ws.receive_json()
+        while r["type"] not in ("FileBase", "Error"):
+            r = ws.receive_json()
+        assert r["type"] == "FileBase" and r["content"] == "old\n"

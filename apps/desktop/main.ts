@@ -227,6 +227,20 @@ ipcMain.on("term-kill", (_e, id: number) => {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // 去掉默认菜单栏（File/Edit/View/...）
 
+  // 产品改名（My-Harness→Y Harness）后 userData 目录会变：把旧目录的 projects.json 迁过来
+  const oldData = path.join(app.getPath("appData"), "my-harness-desktop");
+  const newData = app.getPath("userData");
+  try {
+    if (
+      path.resolve(oldData) !== path.resolve(newData) &&
+      fs.existsSync(path.join(oldData, "projects.json")) &&
+      !fs.existsSync(path.join(newData, "projects.json"))
+    ) {
+      fs.mkdirSync(newData, { recursive: true });
+      fs.copyFileSync(path.join(oldData, "projects.json"), path.join(newData, "projects.json"));
+    }
+  } catch {}
+
   // —— 项目 IPC：原生选文件夹 / 读取最近项目 / 切换项目（重启 daemon）——
   ipcMain.handle("pick-folder", async () => {
     if (!win) return null;
@@ -282,11 +296,13 @@ app.whenReady().then(async () => {
         "或重新打包以内嵌 harness-server.exe。",
     });
   }
+  const iconPath = path.join(__dirname, "build", "icon.ico");
   win = new BrowserWindow({
     width: 1280,
     height: 880,
     backgroundColor: "#111318",
-    title: "My-Harness",
+    title: "Y Harness",
+    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

@@ -139,6 +139,8 @@ export type WsEvent =
   | { type: "SkillList"; skills?: SkillInfo[] }
   | { type: "ImageSaved"; path: string; media_type: string; data: string }
   | { type: "WorkspaceFile"; path: string; content: string; truncated?: boolean }
+  | { type: "LintResult"; path: string; req?: number; diagnostics: { line: number; col: number; end_line: number; end_col: number; message: string; severity: "error" | "warning" | "info" }[] }
+  | { type: "GotoDefResult"; req?: number; name: string; file: string | null; line: number | null }
   | { type: "RunStarted" }
   | { type: "ReasoningDelta"; text: string }
   | { type: "TokenDelta"; text: string }
@@ -161,6 +163,21 @@ export type WsEvent =
       context_window: number;
       static_tokens: number;
     }
+  // —— 工作台（IDE）——
+  | { type: "DirListing"; path: string; entries: { name: string; kind: "file" | "dir"; size: number; mtime: number }[] }
+  | { type: "FileContent"; path: string; content: string; binary: boolean; truncated: boolean; size: number }
+  | { type: "FileSaved"; path: string; size: number }
+  | { type: "FileBase"; path: string; content: string }
+  | {
+      type: "SearchResult";
+      query: string;
+      results: { path: string; line: number; col: number; text: string }[];
+      total: number;
+      truncated: boolean;
+    }
+  | { type: "GitStatus"; repo: boolean; branch: string; files: { path: string; code: string; xy?: string }[] }
+  | { type: "GitDiff"; path: string; diff: string }
+  | { type: "GitDone"; op: "stage" | "unstage" | "commit"; ok: boolean; message: string }
   | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)
@@ -197,6 +214,8 @@ export type WsCommand =
   | { type: "SearchContent"; query: string; limit: number }
   | { type: "UploadImage"; data_url: string }
   | { type: "ReadWorkspaceFile"; path: string }
+  | { type: "LintCheck"; path: string; text: string; req: number }
+  | { type: "GotoDef"; name: string; path: string; req: number }
   | { type: "ListMemory"; session_id?: string | null }
   | { type: "ReadMemoryFile"; path: string }
   | { type: "DeleteMemoryBlock"; session_id?: string | null; label: string }
@@ -212,6 +231,21 @@ export type WsCommand =
     }
   | { type: "RemoveMcpServer"; name: string }
   | { type: "ListSkills" }
+  // —— 工作台（IDE）——
+  | { type: "ListDir"; path: string }
+  | { type: "ReadFile"; path: string }
+  | { type: "WriteWorkspaceFile"; path: string; content: string }
+  | { type: "CreateEntry"; path: string; kind: "file" | "dir" }
+  | { type: "MoveEntry"; path: string; to: string }
+  | { type: "DeleteEntry"; path: string }
+  | { type: "SearchWorkspace"; query: string; is_regex?: boolean; max?: number }
+  | { type: "GitStatus" }
+  | { type: "GitDiff"; path: string }
+  | { type: "GitStage"; path: string }
+  | { type: "GitStageAll" }
+  | { type: "GitUnstage"; path: string }
+  | { type: "GitCommit"; message: string; all?: boolean }
+  | { type: "GitFileBase"; path: string }
   | { type: "RenameSession"; session_id: string; title: string }
   | { type: "DeleteSession"; session_id: string }
   | { type: "PinSession"; session_id: string; pinned: boolean }

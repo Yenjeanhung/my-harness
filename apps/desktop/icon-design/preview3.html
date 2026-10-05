@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { margin: 0; padding: 32px 40px; background: #0d1017; color: #d7dae0;
+         font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: #7d8590; font-size: 12.5px; margin-bottom: 28px; }
+  .row { display: flex; gap: 28px; align-items: flex-start; margin-bottom: 34px; }
+  .label { width: 200px; flex: none; }
+  .label b { font-size: 14.5px; display: block; margin-bottom: 4px; color: #e6edf3; }
+  .label span { font-size: 11.5px; color: #8b949e; line-height: 1.55; display: block; }
+  .cells { display: flex; gap: 20px; align-items: center; }
+  .cell { text-align: center; }
+  .cell .cap { font-size: 10.5px; color: #6e7681; margin-top: 6px; }
+  .tile { border-radius: 22%; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<h1>Y Harness 图标候选（Y = 你的首字母 × 缰绳意象）</h1>
+<div class="sub">每行从左到右：112px / 48px / 32px / 16px · 图形 #79c0ff，底 #161b22</div>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <g id="tile-bg"><rect width="64" height="64" rx="14" fill="#161b22" stroke="#2a3040"/></g>
+    <!-- J1 缰绳 Y：两臂微弯 + 绳结 -->
+    <g id="ic-j1">
+      <path d="M12 10 C 20 22, 26 30, 31 38" fill="none" stroke-linecap="round"/>
+      <path d="M52 10 C 44 22, 38 30, 33 38" fill="none" stroke-linecap="round"/>
+      <circle cx="32" cy="38" r="5.5" stroke="none"/>
+      <path d="M32 38 L 32 55" fill="none" stroke-linecap="round"/>
+    </g>
+    <!-- J2 穿环 Y：交点是一枚缰环 -->
+    <g id="ic-j2">
+      <path d="M12 10 C 20 22, 25 29, 28 33" fill="none" stroke-linecap="round"/>
+      <path d="M52 10 C 44 22, 39 29, 36 33" fill="none" stroke-linecap="round"/>
+      <circle cx="32" cy="36" r="6" fill="none"/>
+      <path d="M32 42 L 32 55" fill="none" stroke-linecap="round"/>
+    </g>
+    <!-- J3 甩尾 Y：不对称，右臂收进垂尾带钩 -->
+    <g id="ic-j3">
+      <path d="M12 10 C 20 22, 27 32, 32 40" fill="none" stroke-linecap="round"/>
+      <path d="M52 10 C 42 20, 35 30, 32 40" fill="none" stroke-linecap="round"/>
+      <path d="M32 40 C 32 49, 27 54, 18 54" fill="none" stroke-linecap="round"/>
+    </g>
+    <!-- J4 实心粗 Y -->
+    <g id="ic-j4">
+      <path d="M12 9 L23 9 L32 26 L41 9 L52 9 L37 37 L37 55 L27 55 L27 37 Z"
+            stroke-linejoin="round"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="row">
+  <div class="label"><b>J1 · 缰绳 Y（推荐）</b><span>两臂是两根微弯的缰绳，收进中央绳结再垂下——Y 的字形本身就是「双缰执一点」，最贴合品牌。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j1" stroke="#79c0ff" stroke-width="6"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="48" height="48" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j1" stroke="#79c0ff" stroke-width="6.5"/></svg><div class="cap">48px</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j1" stroke="#79c0ff" stroke-width="7"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j1" stroke="#79c0ff" stroke-width="8"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>J2 · 穿环 Y</b><span>交点换成一枚缰环，两缰入环、一缰出环——细节更"马具"，比 J1 多一层机械感。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j2" stroke="#79c0ff" stroke-width="6"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="48" height="48" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j2" stroke="#79c0ff" stroke-width="6.5"/></svg><div class="cap">48px</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j2" stroke="#79c0ff" stroke-width="7"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j2" stroke="#79c0ff" stroke-width="8"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>J3 · 甩尾 Y</b><span>不对称动势版：垂尾向左甩出——像缰绳刚被拽住的一瞬。 uniquely 有速度感，但正 度略低。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j3" stroke="#79c0ff" stroke-width="6"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="48" height="48" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j3" stroke="#79c0ff" stroke-width="6.5"/></svg><div class="cap">48px</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j3" stroke="#79c0ff" stroke-width="7"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j3" stroke="#79c0ff" stroke-width="8"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>J4 · 实心粗 Y</b><span>无装饰的实心粗 Y，圆角处理——最「App 图标」的画法，任何尺寸都极稳，代价是少了缰绳细节。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j4" fill="#79c0ff" stroke="#79c0ff" stroke-width="5"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="48" height="48" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j4" fill="#79c0ff" stroke="#79c0ff" stroke-width="5.5"/></svg><div class="cap">48px</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j4" fill="#79c0ff" stroke="#79c0ff" stroke-width="6"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><use href="#tile-bg"/><use href="#ic-j4" fill="#79c0ff" stroke="#79c0ff" stroke-width="7"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+</body>
+</html>

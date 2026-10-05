@@ -68,7 +68,22 @@
 | `AddMcpServer` | `name`, `transport`: `stdio`(`command`,`args`)/`http`(`url`) | `Notice` + `McpList`（先连接成功才保存） |
 | `RemoveMcpServer` | `name` | `Notice` + `McpList`（热断开，注册的工具即时移除） |
 | `ListSkills` | — | `SkillList` |
-| `ReadWorkspaceFile` | `path`（限工作区内，50K 截断） | `WorkspaceFile` |
+| `ReadWorkspaceFile` | `path`（限工作区内，50K 截断） | `WorkspaceFile`（附件场景） |
+| `LintCheck` | `path`, `text`（编辑器全文）, `req`（回显配对） | `LintResult{path, req, diagnostics[{line, col, end_line, end_col, message, severity}]}`（py=compile 语法 + pyflakes 可选；json=loads；编辑器 700ms 防抖） |
+| `GotoDef` | `name`（标识符）, `path`（来源文件）, `req` | `GotoDefResult{req, name, file, line}`（全工作区搜 def/class，同文件优先；变量退回本文件赋值行；无 LSP 的轻量跳转） |
+| `ListDir` | `path`（空=根；过滤 .git/node_modules 等 + .gitignore） | `DirListing{path, entries[{name,kind,size,mtime}]}` |
+| `ReadFile` | `path` | `FileContent{path, content, binary, truncated, size}`（编辑器场景：二进制探测 + 1MB 上限） |
+| `WriteWorkspaceFile` | `path`, `content` | `FileSaved{path, size}` |
+| `CreateEntry` | `path`, `kind: file/dir` | `Notice` |
+| `MoveEntry` | `path`, `to` | `Notice` |
+| `DeleteEntry` | `path`（移入 `.my-harness/trash/`，可找回） | `Notice` |
+| `SearchWorkspace` | `query`, `is_regex?`, `max?`（≤300 命中） | `SearchResult{query, results[{path,line,col,text}], total, truncated}` |
+| `GitStatus` | — | `GitStatus{repo, branch, files[{path,code,xy}]}`（porcelain；xy=原始两位码：X 暂存区/Y 工作区；非 git 仓库 repo=false） |
+| `GitStage` / `GitUnstage` | `path` | `GitDone{op, ok, message}` + 自动回发 `GitStatus`（unstage 兼容初始提交：reset 失败时 fallback `rm --cached`） |
+| `GitStageAll` | — | 同上（`git add -A`：全部更改含新增/删除一次性暂存） |
+| `GitCommit` | `message`, `all?`（无暂存时 `-a` 全部提交） | `GitDone{op:"commit", ok, message}` + 自动回发 `GitStatus` |
+| `GitDiff` | `path` | `GitDiff{path, diff}` |
+| `GitFileBase` | `path` | `FileBase{path, content}`（git index 版本；未跟踪为空串，diff 视图的「改前」侧） |
 | `UploadImage` | `data_url`（image/png\|jpeg\|gif\|webp，≤10MB） | `ImageSaved`（落盘 workspace/attachments/ 并回传 base64） |
 | `RespondPermission` | `request_id`, `answer`: `yes`/`always`/`no` | —（解除挂起的审批 future） |
 | `Ping` | — | `Pong` |
@@ -99,6 +114,8 @@
 | `Stats` | `sessions`, `messages`, `runs`, `input_tokens`, `output_tokens`, `cost_usd?`, `db_bytes`, `data_dir` | 本机统计 |
 | `ContentSearchResult` | `query`, `results[]`(`session_id`, `snippet`) | 全文搜索命中 |
 | `ImageSaved` / `WorkspaceFile` | `path`, `media_type`, `data` / `path`, `content`, `truncated` | 附件就绪 |
+| `DirListing` / `FileContent` / `FileSaved` / `FileBase` | 见对应命令 | 工作台文件事件 |
+| `SearchResult` / `GitStatus` / `GitDiff` | 见对应命令 | 工作台搜索与 Git 事件 |
 | `MemoryList` / `MemoryFileContent` / `McpList` / `SkillList` / `SessionExported` / `Pong` | — | 对应命令的回复 |
 
 费用说明：token 用量真实记录（每轮模型返回的 usage，子代理共享累计）；`cost_usd` 按

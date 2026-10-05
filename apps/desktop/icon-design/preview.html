@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { margin: 0; padding: 32px 40px; background: #0d1017; color: #d7dae0;
+         font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: #7d8590; font-size: 12.5px; margin-bottom: 28px; }
+  .row { display: flex; gap: 28px; align-items: flex-start; margin-bottom: 34px; }
+  .label { width: 190px; flex: none; }
+  .label b { font-size: 14.5px; display: block; margin-bottom: 4px; color: #e6edf3; }
+  .label span { font-size: 11.5px; color: #8b949e; line-height: 1.55; display: block; }
+  .cells { display: flex; gap: 18px; align-items: center; }
+  .cell { text-align: center; }
+  .cell .cap { font-size: 10.5px; color: #6e7681; margin-top: 6px; }
+  .tile { border-radius: 22%; }
+  .strip { background: #f0f3f6; border-radius: 10px; padding: 10px; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<h1>My-Harness 应用图标候选</h1>
+<div class="sub">统一蓝色系（延续界面 #1f6feb → #58a6ff），白色单色线条 · 每行从左到右：蓝色渐变瓷片 112px / 深色瓷片 112px / 浅色底 64px / 32px / 16px</div>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="gb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6feb"/><stop offset="1" stop-color="#58a6ff"/>
+    </linearGradient>
+    <g id="ic-a">
+      <path d="M7 11 C 22 13, 42 32, 54 50" fill="none" stroke-linecap="round"/>
+      <path d="M57 11 C 42 13, 22 32, 10 50" fill="none" stroke-linecap="round"/>
+      <circle cx="32" cy="34" r="9.5" fill="none"/>
+    </g>
+    <g id="ic-b">
+      <rect x="15" y="9" width="9" height="46" rx="4.5" stroke="none"/>
+      <rect x="40" y="9" width="9" height="46" rx="4.5" stroke="none"/>
+      <path d="M24 29 C 28 22, 36 22, 40 29" fill="none" stroke-linecap="round"/>
+      <circle cx="40" cy="29" r="3.2" stroke="none"/>
+    </g>
+    <g id="ic-c">
+      <rect x="16" y="16" width="32" height="32" rx="9" fill="none"/>
+      <rect x="23" y="29" width="18" height="6" rx="3" stroke="none"/>
+      <path d="M4 32 H 12" stroke-linecap="round"/>
+      <path d="M52 32 H 60" stroke-linecap="round"/>
+    </g>
+    <g id="ic-d">
+      <circle cx="16" cy="32" r="9" fill="none"/>
+      <circle cx="48" cy="32" r="9" fill="none"/>
+      <path d="M25 29 Q 32 22, 39 29" fill="none" stroke-linecap="round"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="row">
+  <div class="label"><b>A · 缰绳穿环</b><span>两条缰绳交叉穿过中央缰环——「六辔在手」的抽象化：多股线索收于一环（呼应多代理编排）。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-a" stroke="#fff" stroke-width="5"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#161b22" stroke="#30363d"/><use href="#ic-a" stroke="#79c0ff" stroke-width="5"/></svg><div class="cap">深色瓷片</div></div>
+    <div class="cell"><div class="strip"><svg width="64" height="64" viewBox="0 0 64 64"><use href="#ic-a" stroke="#1f6feb" stroke-width="5"/></svg></div><div class="cap">浅色底 64</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-a" stroke="#fff" stroke-width="6"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-a" stroke="#fff" stroke-width="7"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>B · H 缰绳</b><span>产品名首字母 H，横梁换成一段下垂的缰绳并收一个小绳结——字母标里藏品牌意象。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-b" fill="#fff" stroke="#fff" stroke-width="5"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#161b22" stroke="#30363d"/><use href="#ic-b" fill="#79c0ff" stroke="#79c0ff" stroke-width="5"/></svg><div class="cap">深色瓷片</div></div>
+    <div class="cell"><div class="strip"><svg width="64" height="64" viewBox="0 0 64 64"><use href="#ic-b" fill="#1f6feb" stroke="#1f6feb" stroke-width="5"/></svg></div><div class="cap">浅色底 64</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-b" fill="#fff" stroke="#fff" stroke-width="6"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-b" fill="#fff" stroke="#fff" stroke-width="7"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>C · 带扣</b><span>harness 的硬件本体：皮带扣。几何、硬朗、一眼可辨，隐喻「把模型/工具扣在一起」。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-c" stroke="#fff" stroke-width="5"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#161b22" stroke="#30363d"/><use href="#ic-c" stroke="#79c0ff" stroke-width="5"/></svg><div class="cap">深色瓷片</div></div>
+    <div class="cell"><div class="strip"><svg width="64" height="64" viewBox="0 0 64 64"><use href="#ic-c" stroke="#1f6feb" stroke-width="5"/></svg></div><div class="cap">浅色底 64</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-c" stroke="#fff" stroke-width="6"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-c" stroke="#fff" stroke-width="7"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="label"><b>D · 马衔</b><span>马具里最标志性的部件：两个衔环 + 中间拱梁。极简几何，小尺寸下依然清晰，识别度最高。</span></div>
+  <div class="cells">
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-d" stroke="#fff" stroke-width="5"/></svg><div class="cap">112px</div></div>
+    <div class="cell"><svg class="tile" width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#161b22" stroke="#30363d"/><use href="#ic-d" stroke="#79c0ff" stroke-width="5"/></svg><div class="cap">深色瓷片</div></div>
+    <div class="cell"><div class="strip"><svg width="64" height="64" viewBox="0 0 64 64"><use href="#ic-d" stroke="#1f6feb" stroke-width="5"/></svg></div><div class="cap">浅色底 64</div></div>
+    <div class="cell"><svg class="tile" width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-d" stroke="#fff" stroke-width="6"/></svg><div class="cap">32px</div></div>
+    <div class="cell"><svg class="tile" width="16" height="16" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="url(#gb)"/><use href="#ic-d" stroke="#fff" stroke-width="7"/></svg><div class="cap">16px</div></div>
+  </div>
+</div>
+</body>
+</html>

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ws://127.0.0.1:* ws://localhost:*" />
     <link rel="stylesheet" href="bundle.css" />
-    <title>My-Harness</title>
+    <title>Y Harness</title>
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -110,6 +110,209 @@
       .gear { width: 32px; min-width: 32px; padding: 5px 0; text-align: center; font-size: 14px; }
 
       .main { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; position: relative; }
+      /* —— 工作台三栏（IDE-DESIGN.md M0）：侧栏 | 编辑器列 | 对话列 —— */
+      .ide { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+      .ide-body { flex: 1; display: flex; min-height: 0; }
+      .main.chat-col { height: auto; min-height: 0; }
+      /* 收起侧栏/对话栏后的浮出按钮 */
+      .sb-float, .chat-float {
+        position: absolute; z-index: 45; width: 30px; height: 34px; border-radius: 8px;
+        background: #161b22; border: 1px solid #30363d; color: #8b949e; cursor: pointer; font-size: 15px;
+      }
+      .sb-float:hover, .chat-float:hover { color: #d7dae0; border-color: #4d5560; background: #1c2230; }
+      .sb-float { left: 6px; top: 50%; transform: translateY(-50%); }
+      .chat-float { right: 10px; top: 56px; }
+      .sb-float:hover, .chat-float:hover { color: #d7dae0; border-color: #4d5560; }
+      /* 编辑器舞台：宿主常驻 + 覆盖层空态 */
+      .ed { position: relative; }
+      .ed-stage { flex: 1; min-height: 0; display: flex; position: relative; }
+      .ed-overlay { position: absolute; inset: 0; background: #0d1017; z-index: 5; display: flex; }
+      .editor-col {
+        flex: 1; display: flex; flex-direction: column; min-width: 260px; min-height: 0;
+        background: #0d1017; border-right: 1px solid #262a33;
+      }
+      .col-splitter { flex: none; width: 4px; cursor: col-resize; background: transparent; }
+      .col-splitter:hover, .col-splitter:active { background: rgba(121, 192, 255, 0.25); }
+
+      /* 编辑器：tab 条 / 冲突条 / 空态 */
+      .ed { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+      .ed-tabs {
+        display: flex; align-items: center; gap: 2px; padding: 4px 8px 4px;
+        border-bottom: 1px solid #262a33; overflow-x: auto; flex: none; min-height: 34px;
+      }
+      .ed-tab {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px;
+        background: #161b22; border: 1px solid #262a33; color: #8b949e; font-size: 12px;
+        cursor: pointer; max-width: 220px; white-space: nowrap; flex: none;
+      }
+      .ed-tab.on { color: #d7dae0; border-color: #38414d; background: #1c2230; }
+      .ed-tab .ed-name { overflow: hidden; text-overflow: ellipsis; }
+      .ed-tab .ed-name.dirty { color: #e3b341; }
+      .ed-tab .ed-bin { color: #6e7681; font-size: 10.5px; }
+      .ed-x { background: transparent; border: none; color: #7d8590; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+      .ed-x:hover { color: #d7dae0; }
+      .ed-tool {
+        flex: none; background: transparent; border: 1px solid #30363d; border-radius: 6px;
+        color: #8b949e; font-size: 11.5px; padding: 3px 9px; cursor: pointer;
+      }
+      .ed-tool:hover:not(:disabled) { color: #d7dae0; border-color: #484f58; }
+      /* AI 辅助菜单（tab 条内向上弹） */
+      .ai-wrap { position: relative; flex: none; }
+      .ai-wrap.ai-float { position: static; }
+      .ed-floats {
+        position: absolute; top: 8px; right: 16px; z-index: 30;
+        display: flex; align-items: center; gap: 6px;
+      }
+      .add2chat { display: inline-flex; align-items: center; padding: 4px 8px; color: #79c0ff; }
+      .add2chat:hover { color: #fff; border-color: #1f6feb; background: #1f3a5f66; }
+      /* 对话输入框上的引用 chip（CodeBuddy 式） */
+      .chip.refchip {
+        display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+        color: #79c0ff; background: #111a27; border-color: #1f3a5f;
+      }
+      .chip.refchip:hover { border-color: #4d5560; color: #aed2ff; }
+      .chip.refchip svg { color: #79c0ff; }
+      .ed-tool.ai { display: inline-flex; align-items: center; gap: 5px; color: #d2a8ff; }
+      .ed-tool.ai:hover, .ed-tool.ai.on { color: #e6c9ff; border-color: #6b4fa0; }
+      .ai-menu {
+        position: absolute; right: 0; z-index: 50; width: 200px;
+        top: calc(100% + 6px);
+        background: #161921; border: 1px solid #30363d; border-radius: 10px; padding: 5px;
+        box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      }
+      .ai-item {
+        display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px;
+        color: #c9d1d9; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+      }
+      .ai-item:hover { background: #1f6feb33; color: #fff; }
+      /* 编辑器选区右键菜单 */
+      .ctx-menu {
+        position: fixed; z-index: 80; width: 190px;
+        background: #161921; border: 1px solid #30363d; border-radius: 10px; padding: 5px;
+        box-shadow: 0 8px 28px rgba(0,0,0,.55);
+      }
+      .ctx-menu .ai-item svg { color: #79c0ff; }
+      .ai-item .ft-icon, .ai-item svg { color: #d2a8ff; flex: none; }
+      .ed-tool:disabled { opacity: 0.4; cursor: default; }
+      .ed-conflict {
+        display: flex; align-items: center; gap: 10px; padding: 6px 12px; flex: none;
+        background: #2a230d; border-bottom: 1px solid #5a4a1a; color: #e3b341; font-size: 12.5px;
+      }
+      .ed-conflict button { font-size: 12px; padding: 3px 10px; }
+      .ed-conflict .primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+      .ed-host-wrap { flex: 1; min-height: 0; display: flex; }
+      .ed-host { flex: 1; min-width: 0; overflow: hidden; }
+      .ed-empty {
+        flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;
+        color: #7d8590; font-size: 13px;
+      }
+      .ed-empty-t { color: #c9d1d9; }
+      .ed-empty-s { font-size: 11.5px; color: #6e7681; max-width: 320px; text-align: center; line-height: 1.6; }
+      .ed-empty button { font-size: 12.5px; padding: 5px 14px; }
+      .ed-empty .primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+      /* diff 视图 */
+      .diff-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+      .diff-head {
+        display: flex; justify-content: space-between; gap: 10px; padding: 5px 12px; flex: none;
+        color: #7d8590; font-size: 11.5px; border-bottom: 1px solid #262a33;
+        font-family: Consolas, monospace;
+      }
+      .diff-path { color: #c9d1d9; overflow: hidden; text-overflow: ellipsis; }
+      .diff-host { flex: 1; min-height: 0; overflow: hidden; }
+      .diff-host .cm-mergeView { height: 100%; }
+      .diff-host .cm-editor { height: 100%; font-size: 12.5px; }
+      .diff-same, .diff-loading { padding: 24px; color: #6e7681; font-size: 12.5px; text-align: center; }
+
+      /* —— 文件树（资源管理器）—— */
+      .ft { display: flex; flex-direction: row; min-height: 0; flex: 1; }
+      /* VSCode 式活动栏：左侧竖排视图切换 */
+      .ft-act {
+        flex: none; width: 42px; display: flex; flex-direction: column; align-items: center;
+        gap: 2px; padding: 6px 0; border-right: 1px solid #1c2128;
+      }
+      .ft-act button {
+        width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+        background: none; border: none; border-radius: 6px; color: #7d8590; cursor: pointer;
+        position: relative; padding: 0;
+      }
+      .ft-act button:hover { color: #d7dae0; background: #1c2230; }
+      .ft-act button.on { color: #fff; }
+      .ft-act button.on::before {
+        content: ""; position: absolute; left: -4px; top: 7px; bottom: 7px;
+        width: 2px; background: #4493f8; border-radius: 1px;
+      }
+      .act-badge {
+        position: absolute; bottom: 1px; right: 0; background: #1f6feb; color: #fff;
+        font-size: 9px; font-style: normal; border-radius: 8px; min-width: 14px; height: 14px;
+        line-height: 14px; text-align: center; font-weight: 600; padding: 0 3px;
+      }
+      .act-spacer { flex: 1; }
+      .ft-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+      .ft-toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; }
+      .ft-toolbar .seg.mini button { padding: 2px 10px; font-size: 11.5px; }
+      .ft-tree { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 10px; }
+      .ft-row {
+        display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: pointer;
+        color: #c9d1d9; font-size: 12.5px; white-space: nowrap; position: relative;
+      }
+      .ft-row:hover { background: #1c2230; }
+      .ft-row .ft-chev { width: 10px; color: #7d8590; flex: none; font-size: 10px; }
+      .ft-row .ft-icon { color: #7d8590; display: inline-flex; flex: none; }
+      .ft-row .ft-name { overflow: hidden; text-overflow: ellipsis; }
+      .ft-row.touched .ft-name { color: #79c0ff; }
+      .ft-dot { width: 6px; height: 6px; border-radius: 50%; background: #4493f8; flex: none; }
+      .ft-git { font-size: 10.5px; font-weight: 600; flex: none; font-family: Consolas, monospace; }
+      .ft-acts { margin-left: auto; display: none; gap: 2px; align-items: center; flex: none; }
+      .ft-row:hover .ft-acts { display: inline-flex; }
+      .ft-b {
+        background: transparent; border: none; color: #7d8590; cursor: pointer;
+        padding: 1px 4px; border-radius: 4px; line-height: 1; display: inline-flex;
+      }
+      .ft-b:hover { color: #d7dae0; background: #2a2f37; }
+      .ft-b.danger { color: #f85149; }
+      .ft-ren {
+        flex: 1; min-width: 60px; background: #0d1017; border: 1px solid #1f6feb; border-radius: 5px;
+        color: #d7dae0; font-size: 12px; padding: 1px 6px; outline: none;
+      }
+      .ft-empty { color: #6e7681; font-size: 11.5px; padding: 6px 8px; }
+      .ft-search { padding: 2px 8px 8px; }
+      .ft-search input {
+        width: 100%; background: #0d1017; border: 1px solid #30363d; border-radius: 7px;
+        color: #d7dae0; font-size: 12px; padding: 5px 9px; outline: none;
+      }
+      .ft-search input:focus { border-color: #1f6feb; }
+      .ft-smeta { color: #6e7681; font-size: 11px; padding: 0 10px 6px; }
+      .ft-spath {
+        display: flex; align-items: center; gap: 5px; padding: 4px 10px; color: #79c0ff;
+        font-size: 12px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      }
+      .ft-spath:hover { text-decoration: underline; }
+      .ft-hit {
+        display: flex; gap: 8px; padding: 2px 10px 2px 26px; color: #8b949e; font-size: 11.5px;
+        cursor: pointer; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden;
+      }
+      .ft-hit:hover { background: #1c2230; color: #c9d1d9; }
+      .ft-ln { color: #6e7681; min-width: 26px; text-align: right; flex: none; }
+      .ft-htext { overflow: hidden; text-overflow: ellipsis; }
+
+      /* 本次任务改动浮条 */
+      .runbar {
+        display: flex; align-items: center; gap: 6px; margin: 6px 14px 0; padding: 5px 12px;
+        background: #111a27; border: 1px solid #1f3a5f; border-radius: 9px; flex-wrap: wrap; flex: none;
+      }
+      .runbar-label { color: #79c0ff; font-size: 12px; }
+      .runbar-chip {
+        background: #1c2230; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9;
+        font-size: 11.5px; padding: 2px 8px; cursor: pointer; max-width: 160px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .runbar-chip:hover { border-color: #4d5560; color: #fff; }
+      .runbar-clear { background: transparent; border: none; color: #7d8590; cursor: pointer; padding: 2px; }
+
+      /* 工具卡片可跳转 */
+      .tool.jump { cursor: pointer; }
+      .tool.jump:hover { border-color: #4d5560; }
 
       /* —— 左侧消息导航（outline）：悬停浮现，点击跳转 —— */
       .outline-nav {
@@ -152,6 +355,47 @@
       .md pre code { background: none; border: none; padding: 0; font-size: 12.5px; }
       .md blockquote { border-left: 3px solid #30363d; margin: 8px 0; padding: 2px 12px; color: #8b949e; }
       .md a { color: #79c0ff; }
+      /* 回答中的行号引用（path:114 / 第 114-120 行）：点击跳编辑器对应行 */
+      .md-jump {
+        color: #79c0ff; cursor: pointer;
+        border-bottom: 1px dashed #79c0ff66;
+      }
+      .md-jump:hover { background: #79c0ff22; border-bottom-color: #79c0ff; }
+      /* 源代码管理（Git 面板） */
+      .ft-git { padding: 8px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+      .git-msg {
+        background: #0d1017; border: 1px solid #30363d; border-radius: 6px; color: #d7dae0;
+        padding: 6px 8px; font-size: 12px; resize: vertical; font-family: inherit;
+      }
+      .git-msg:focus { outline: none; border-color: #4493f8; }
+      .git-commit {
+        background: #1f6feb; border: none; border-radius: 6px; color: #fff;
+        padding: 6px 0; font-size: 12.5px; cursor: pointer;
+      }
+      .git-commit:hover:not(:disabled) { background: #388bfd; }
+      .git-commit:disabled { opacity: 0.45; cursor: default; }
+      .git-branch { color: #8b949e; font-size: 11.5px; margin-top: 4px; }
+      .git-sec { color: #8b949e; font-size: 11.5px; margin-top: 6px; display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+      .git-sec b { color: #d7dae0; }
+      .git-sec-act {
+        width: 18px; height: 18px; line-height: 16px; text-align: center; cursor: pointer;
+        border: 1px solid #30363d; border-radius: 4px; color: #8b949e; font-size: 11px;
+      }
+      .git-sec-act:hover { color: #d7dae0; border-color: #4493f8; }
+      .git-row {
+        display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px;
+        cursor: pointer; font-size: 12px; min-width: 0;
+      }
+      .git-row:hover { background: #161b22; }
+      .git-badge { flex: none; width: 12px; text-align: center; font-weight: 600; }
+      .git-name { color: #d7dae0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .git-dir { color: #6e7681; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+      .git-act {
+        flex: none; width: 18px; height: 18px; line-height: 16px; text-align: center;
+        border: 1px solid #30363d; border-radius: 4px; color: #8b949e; visibility: hidden;
+      }
+      .git-row:hover .git-act { visibility: visible; }
+      .git-act:hover { color: #d7dae0; border-color: #4493f8; }
       .md table { border-collapse: collapse; margin: 10px 0; display: block; overflow-x: auto; max-width: 100%; }
       .md th, .md td { border: 1px solid #30363d; padding: 5px 12px; font-size: 13px; text-align: left; }
       .md th { background: #161921; font-weight: 600; }
@@ -363,8 +607,9 @@
       .ctx-note { border-top: 1px solid #262a33; padding-top: 8px; color: #6e7681; font-size: 11px; line-height: 1.5; }
       .term-panel {
         position: relative; flex: none; display: flex; flex-direction: column;
-        border-top: 1px solid #30363d; background: #111318;
+        border-top: 1px solid #30363d; background: #111318; min-width: 0;
       }
+      .editor-col .term-panel { border-left: none; border-right: none; }
       .term-resize {
         height: 6px; flex: none; cursor: row-resize; margin-top: -1px;
       }
@@ -398,7 +643,14 @@
         width: 100%; background: transparent; color: #d7dae0; border: none; outline: none;
         font-size: 14px; resize: none; line-height: 1.5;
       }
-      .controls { display: flex; align-items: center; gap: 7px; margin-top: 6px; }
+      .controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: nowrap; min-width: 0; }
+      .controls.compact { gap: 4px; margin-top: 4px; }
+      .controls.compact .ctl { padding: 3px 6px; font-size: 11.5px; }
+      .controls .ctl.model { flex: 1 1 auto; min-width: 88px; max-width: 170px; }
+      .pchip.iconly { padding: 4px 8px; }
+      /* 窄对话栏：头部单行，标题截断，不允许换行堆叠 */
+      .chat-col header { flex-wrap: nowrap; overflow: hidden; }
+      .chat-col header .title.topic { flex: 1 1 auto; min-width: 0; }
       .controls .ctl {
         background: transparent; border: 1px solid #30363d; color: #8b949e;
         border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; max-width: 240px;

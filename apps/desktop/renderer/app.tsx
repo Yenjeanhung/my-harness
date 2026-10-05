@@ -7,6 +7,10 @@ import { createRoot } from "react-dom/client";
 import { marked } from "marked";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { Icon, ThinkRow, TerminalPanel, type IconName } from "./icons";
+import { FileTree, EditorPane } from "./workbench";
+import type { FileDoc } from "./workbench";
+import { setSocket } from "./ws";
 import type {
   Img,
   SessionInfo,
@@ -111,336 +115,6 @@ function groupSessions(list: SessionInfo[] | null | undefined): { key: string; l
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-// 简洁线性图标（feather 风格，currentColor 跟随文字色）
-const ICON_PATHS = {
-  edit: (
-    <>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-    </>
-  ),
-  pin: (
-    <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 2-2V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v3a2 2 0 0 0 2 2h1v4.76z" />
-  ),
-  x: (
-    <>
-      <path d="M18 6L6 18" />
-      <path d="M6 6l12 12" />
-    </>
-  ),
-  check: <path d="M20 6L9 17l-5-5" />,
-  download: (
-    <>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M12 15V3" />
-    </>
-  ),
-  // （download 当前未使用；保留供未来导出功能恢复）
-  folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />,
-  cpu: (
-    <>
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <rect x="9" y="9" width="6" height="6" />
-      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" />
-    </>
-  ),
-  database: (
-    <>
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M3 5v14a9 3 0 0 0 18 0V5" />
-      <path d="M3 12a9 3 0 0 0 18 0" />
-    </>
-  ),
-  server: (
-    <>
-      <rect x="2" y="2" width="20" height="8" rx="2" />
-      <rect x="2" y="14" width="20" height="8" rx="2" />
-      <path d="M6 6h.01M6 18h.01" />
-    </>
-  ),
-  zap: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
-  search: (
-    <>
-      <circle cx="11" cy="11" r="8" />
-      <path d="M21 21l-4.35-4.35" />
-    </>
-  ),
-  terminal: (
-    <>
-      <path d="M4 17l6-6-6-6" />
-      <path d="M12 19h8" />
-    </>
-  ),
-  file: (
-    <>
-      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-      <path d="M13 2v7h7" />
-    </>
-  ),
-  bulb: (
-    <>
-      <path d="M9 18h6M10 21h4" />
-      <path d="M12 3a6 6 0 0 0-3.5 10.9c.7.5 1.5 1.3 1.5 2.1h4c0-.8.8-1.6 1.5-2.1A6 6 0 0 0 12 3z" />
-    </>
-  ),
-  pointer: <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />,
-  shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
-  "shield-check": (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="M9 12l2 2 4-4" />
-    </>
-  ),
-  "shield-x": (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
-    </>
-  ),
-  "shield-alert": (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="M12 8v4" />
-      <path d="M12 16h.01" />
-    </>
-  ),
-  chev: <path d="M6 9l6 6 6-6" />,
-  brain: (
-    <>
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-      <path d="M12 5v13" />
-    </>
-  ),
-  copy: (
-    <>
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </>
-  ),
-  branch: (
-    <>
-      <path d="M6 3v12" />
-      <circle cx="18" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M18 9a9 9 0 0 1-9 9" />
-    </>
-  ),
-  sliders: (
-    <>
-      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
-      <path d="M1 14h6M9 8h6M17 16h6" />
-    </>
-  ),
-};
-
-type IconName = keyof typeof ICON_PATHS;
-
-// 思考活动行：默认折叠「思考 · 持续了 N 秒」，有全文时点击展开（ZCode 式 thoughts 折叠条）
-function ThinkRow({ it }: { it: ThinkItem }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="act-think-wrap">
-      <div
-        className={"act-think" + (it.text ? " clickable" : "")}
-        onClick={() => it.text && setOpen((o) => !o)}
-        title={it.text ? (open ? "收起思考内容" : "展开思考内容") : ""}
-      >
-        <Icon name="cpu" size={12} />
-        思考{it.secs ? ` · 持续了 ${fmtClockCn(it.secs)}` : ""}
-        {it.text ? <span className="think-chev">{open ? "▾" : "▸"}</span> : null}
-      </div>
-      {open && it.text ? <pre className="think-full">{it.text}</pre> : null}
-    </div>
-  );
-}
-
-// —— 内嵌终端面板（VS Code/ZCode 式：底部抽屉，多 tab，node-pty + xterm.js）——
-interface TermTab {
-  id: number; // pty 会话 id（=tab id）
-  title: string;
-  cwd: string;
-}
-
-function TerminalPanel({ onClose }: { onClose: () => void }) {
-  const [tabs, setTabs] = useState<TermTab[]>([]);
-  const [active, setActive] = useState<number | null>(null);
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  // xterm 实例与 fit 插件都存 ref（不进 state：命令式对象，重渲染无关）
-  const termsRef = useRef<Map<number, { term: Terminal; fit: FitAddon }>>(new Map());
-  const activeRef = useRef<number | null>(null);
-  useEffect(() => {
-    activeRef.current = active;
-  }, [active]);
-
-  // 全局事件接线只挂一次：data/exit 按 id 路由到对应 xterm
-  useEffect(() => {
-    window.myharness?.termOnData?.((id, data) => {
-      termsRef.current.get(id)?.term.write(data);
-    });
-    window.myharness?.termOnExit?.((id) => {
-      termsRef.current.get(id)?.term.dispose();
-      termsRef.current.delete(id);
-      setTabs((prev) => {
-        const next = prev.filter((t) => t.id !== id);
-        setActive((a) => (a === id ? next[next.length - 1]?.id ?? null : a));
-        return next;
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const openTerminal = async () => {
-    const host = hostRef.current;
-    if (!host || !window.myharness?.termCreate) return;
-    // 面板刚挂载时尺寸可能是 0：先给占位行列，挂上后 fit 校正
-    const res = await window.myharness.termCreate(80, 24);
-    if (res.error) {
-      alert(`终端打开失败：${res.error}`);
-      onClose();
-      return;
-    }
-    const { id, cwd, title } = res;
-    const term = new Terminal({
-      fontFamily: "Consolas, 'Cascadia Mono', monospace",
-      fontSize: 12.5,
-      cursorBlink: true,
-      convertEol: false,
-      theme: {
-        background: "#111318",
-        foreground: "#d7dae0",
-        cursor: "#79c0ff",
-        selectionBackground: "#264f78",
-      },
-      scrollback: 5000,
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.onData((d) => window.myharness?.termInput?.(id, d));
-    term.onResize(({ cols, rows }) => window.myharness?.termResize?.(id, cols, rows));
-    termsRef.current.set(id, { term, fit });
-    setTabs((prev) => [...prev, { id, title, cwd }]);
-    setActive(id);
-  };
-
-  // 激活 tab：把 xterm DOM 挂到 host 并 fit
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || active == null) return;
-    const entry = termsRef.current.get(active);
-    if (!entry) return;
-    if (entry.term.element?.parentElement !== host) {
-      host.innerHTML = "";
-      entry.term.open(host);
-    }
-    try {
-      entry.fit.fit();
-      entry.term.focus();
-    } catch {}
-  }, [active, tabs.length]);
-
-  // 面板尺寸变化（拖动/开合）时重算行列
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || active == null) return;
-    const ro = new ResizeObserver(() => {
-      const entry = termsRef.current.get(activeRef.current ?? -1);
-      if (!entry) return;
-      try {
-        entry.fit.fit();
-      } catch {}
-    });
-    ro.observe(host);
-    return () => ro.disconnect();
-  }, [active == null]);
-
-  // 面板高度拖拽：顶缘把手上下拉，双击复位
-  const [termHeight, setTermHeight] = useState(300);
-  const termDrag = useRef<{ startY: number; startH: number } | null>(null);
-  const onTermDragStart = (e: React.MouseEvent) => {
-    termDrag.current = { startY: e.clientY, startH: termHeight };
-    e.preventDefault();
-  };
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!termDrag.current) return;
-      const dy = termDrag.current.startY - e.clientY;
-      setTermHeight(Math.max(140, Math.min(window.innerHeight * 0.7, termDrag.current.startH + dy)));
-    };
-    const onUp = () => {
-      termDrag.current = null;
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [termHeight]);
-
-  const closeTab = (id: number) => {
-    window.myharness?.termKill?.(id);
-    // 进程退出事件会做实际清理；双保险直接摘
-    termsRef.current.get(id)?.term.dispose();
-    termsRef.current.delete(id);
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      setActive((a) => (a === id ? next[next.length - 1]?.id ?? null : a));
-      return next;
-    });
-  };
-
-  return (
-    <div className="term-panel" style={{ height: termHeight }}>
-      <div
-        className="term-resize"
-        title="拖拽调整高度 · 双击复位"
-        onMouseDown={onTermDragStart}
-        onDoubleClick={() => setTermHeight(300)}
-      />
-      <div className="term-head">
-        <span className="term-label">
-          <Icon name="terminal" size={12} /> 终端
-        </span>
-        {tabs.map((t) => (
-          <div key={t.id} className={"term-tab" + (t.id === active ? " on" : "")} onClick={() => setActive(t.id)}>
-            <span title={t.cwd}>{t.title}</span>
-            <button className="term-x" title="关闭" onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}>×</button>
-          </div>
-        ))}
-        <button className="term-new" title="新建终端" onClick={openTerminal}>＋</button>
-        <div style={{ flex: 1 }} />
-        <button className="term-x" title="收起终端" onClick={onClose}>×</button>
-      </div>
-      <div ref={hostRef} className="term-host" onClick={() => termsRef.current.get(active ?? -1)?.term.focus()} />
-      {tabs.length === 0 && (
-        <div className="term-empty">
-          <button className="primary" onClick={openTerminal}>打开终端（{window.myharness ? "PowerShell，工作区=当前项目" : "仅桌面端可用"}）</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Icon({ name, size = 13, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ display: "block" }}
-    >
-      {ICON_PATHS[name]}
-    </svg>
-  );
-}
-
 // 权限模式：ZCode 式下拉（图标+标题+描述），完全访问用橘黄警示
 const PERM_META: Record<PermMode, { label: string; desc: string; icon: IconName }> = {
   plan: { label: "计划模式", desc: "编辑前先出计划，确认后再动手。", icon: "bulb" },
@@ -536,6 +210,7 @@ interface UserItem {
   kind: "user";
   text: string;
   images?: Img[];
+  refs?: { path: string; from: number; to: number }[]; // 引用芯片：从 composed/落库文本解析
   seq?: number;
 }
 interface AssistantItem {
@@ -624,7 +299,7 @@ function App() {
   const [moveSession, setMoveSession] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [groupBy, setGroupBy] = useState<"date" | "group">("date"); // date | topic | group
-  const [sideTab, setSideTab] = useState<"sessions" | "projects">("sessions"); // 侧栏第三个 tab：项目
+  const [sideTab, setSideTab] = useState<"sessions" | "projects" | "files">("sessions"); // 侧栏第三个 tab：项目
   const [projects, setProjects] = useState<{ current: string | null; recent: string[] }>({
     current: null,
     recent: [],
@@ -652,6 +327,34 @@ function App() {
   const [reasonFull, setReasonFull] = useState(""); // 本轮完整推理全文：思考区实时流式显示（ZCode 式）
   const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
   const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（底部抽屉）
+  // —— 工作台（IDE，见 IDE-DESIGN.md）——
+  const [editorOpen, setEditorOpen] = useState(true);
+  const [chatW, setChatW] = useState(480); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
+  const [chatHidden, setChatHidden] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const chatDrag = useRef<{ startX: number; startW: number } | null>(null);
+  const [openFiles, setOpenFiles] = useState<{ path: string; truncated: boolean; binary: boolean; dirty: boolean }[]>([]);
+  const openFilesRef = useRef(openFiles);
+  useEffect(() => { openFilesRef.current = openFiles; }, [openFiles]);
+  const diffTabsRef = useRef<string[]>([]);
+  const [, bumpDiffs] = useState(0);
+  const [activeTab, setActiveTab] = useState<{ kind: "file" | "diff"; path: string | null }>({ kind: "file", path: null });
+  const fileDocs = useRef<Record<string, FileDoc>>({});
+  const [conflict, setConflict] = useState<string | null>(null);
+  const pendingOpen = useRef<Record<string, { line?: number }>>({});
+  const pendingReload = useRef<Set<string>>(new Set());
+  const diffReq = useRef<Set<string>>(new Set());
+  const diffStore = useRef<Record<string, { base?: string; current?: string }>>({});
+  const [reveal, setReveal] = useState<{ path: string; line: number } | null>(null);
+  const [dirListing, setDirListing] = useState<{ path: string; entries: { name: string; kind: "file" | "dir"; size: number; mtime: number }[]; n: number } | null>(null);
+  const dirSeq = useRef(0);
+  const [searchRes, setSearchRes] = useState<{ query: string; results: { path: string; line: number; col: number; text: string }[]; total: number; truncated: boolean } | null>(null);
+  const [gitFiles, setGitFiles] = useState<Record<string, string>>({});
+  const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] }>({ repo: false, branch: "", files: [] });
+  const [gitBranch, setGitBranch] = useState("");
+  const [runChanged, setRunChanged] = useState<string[]>([]);
+  const [chatRefs, setChatRefs] = useState<{ path: string; from: number; to: number }[]>([]); // 编辑器选区引用 chip（CodeBuddy 式）
+  const [filesRefresh, setFilesRefresh] = useState(0);
   const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
   const [outlineTip, setOutlineTip] = useState<{ text: string; top: number } | null>(null); // 左侧消息导航悬浮预览
   const [copiedId, setCopiedId] = useState<number | null>(null); // 刚复制完的消息 id（图标短暂变 ✓）
@@ -732,7 +435,7 @@ function App() {
   // 实际发送（composed=附件拼好的文本；队列回放时用入队时拼好的版本）
   const sendNow = (text: string, composed: string, imgs: Img[]) => {
     pinnedRef.current = true; // 队列自动补发同样贴底
-    addItem({ kind: "user", text, images: imgs.length ? imgs : undefined });
+    addItem({ kind: "user", text, images: imgs.length ? imgs : undefined, refs: parseChatRefs(composed || text) });
     sendCmd({
       type: "SendMessage",
       session_id: sessionIdRef.current,
@@ -750,6 +453,24 @@ function App() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [ctxOpen]);
+
+  // 编辑器列宽拖拽
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!chatDrag.current) return;
+      const w = chatDrag.current.startW - (e.clientX - chatDrag.current.startX);
+      setChatW(Math.max(340, Math.min(window.innerWidth * 0.55, w)));
+    };
+    const onUp = () => {
+      chatDrag.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   // 运行中的计时器
   useEffect(() => {
@@ -783,6 +504,7 @@ function App() {
     setConn("connecting");
     closingForGood = false;
     ws = new WebSocket(WS_URL);
+    setSocket(ws);
     ws.onopen = () => {
       setConn("open");
       if (reconnectTimer) {
@@ -871,6 +593,7 @@ function App() {
               args: it.args ? JSON.stringify(it.args) : undefined,
               status: it.kind === "tool" ? "done" : undefined,
               images: it.images,
+              refs: it.kind === "user" ? parseChatRefs(it.text || "") : undefined,
               meta: it.kind === "tool" ? describeTool(it.tool || "", it.args) : undefined,
               seq: it.seq,
             }))
@@ -941,6 +664,7 @@ function App() {
           thinkPushed.current = false;
           runStart.current = Date.now();
           setElapsed(0);
+          setRunChanged([]); // 新任务：改动列表从零开始
           // 首条消息此刻已落库：立刻刷侧栏，新会话不用等 RunFinished 才出现
           sendCmd({ type: "ListSessions" });
           break;
@@ -955,6 +679,82 @@ function App() {
           // 恢复会话时的上下文快照：容量圆环一进来就显示，不用等首轮
           if (!e.session_id || e.session_id === sessionIdRef.current)
             setCtxInfo({ tokens: e.context_tokens, window: e.context_window, static: e.static_tokens });
+          break;
+        case "DirListing":
+          dirSeq.current += 1;
+          setDirListing({ path: e.path, entries: e.entries, n: dirSeq.current });
+          break;
+        case "GotoDefResult":
+          // 跳转定义结果：转发给编辑器（EditorPane 按 req 配对后 onJump）
+          window.dispatchEvent(
+            new CustomEvent("wb-gotodef", { detail: { req: e.req, file: e.file, line: e.line } })
+          );
+          break;
+        case "LintResult":
+          // 语法校验结果：转发给编辑器（EditorPane 里的 linter 按 req 配对）
+          window.dispatchEvent(new CustomEvent("wb-lint", { detail: { req: e.req, diagnostics: e.diagnostics } }));
+          break;
+        case "FileContent": {
+          window.dispatchEvent(new CustomEvent("wb-filecontent", { detail: { path: e.path, content: e.content } }));          const p = e.path;
+          const openReq = pendingOpen.current[p];
+          if (openReq) {
+            // 编辑器打开请求：建 tab + 文档
+            delete pendingOpen.current[p];
+            fileDocs.current[p] = { saved: e.content, text: e.content, truncated: e.truncated, binary: e.binary, version: 0 };
+            setOpenFiles((prev) => (prev.some((f) => f.path === p) ? prev : [...prev, { path: p, truncated: e.truncated, binary: e.binary, dirty: false }]));
+            setActiveTab({ kind: "file", path: p });
+            if (openReq.line) setReveal({ path: p, line: openReq.line });
+            break;
+          }
+          if (pendingReload.current.has(p)) {
+            // Agent 改了干净打开的文件：静默重载
+            pendingReload.current.delete(p);
+            const d = fileDocs.current[p];
+            if (d) {
+              d.saved = e.content;
+              d.text = e.content;
+              d.version += 1;
+              setOpenFiles((prev) => prev.map((f) => (f.path === p ? { ...f, dirty: false, truncated: e.truncated, binary: e.binary } : f)));
+            }
+            break;
+          }
+          if (diffReq.current.has(p)) {
+            diffReq.current.delete(p);
+            diffStore.current[p] = { ...(diffStore.current[p] || {}), current: e.content };
+            bumpDiffs((n) => n + 1);
+          }
+          break;
+        }
+        case "FileSaved": {
+          const p = e.path;
+          const d = fileDocs.current[p];
+          if (d) d.saved = d.text;
+          setOpenFiles((prev) => prev.map((f) => (f.path === p ? { ...f, dirty: false } : f)));
+          setFilesRefresh((n) => n + 1); // 新文件落盘后文件树能看到
+          break;
+        }
+        case "FileBase": {
+          const p = e.path;
+          if (diffStore.current[p]) {
+            diffStore.current[p] = { ...(diffStore.current[p] || {}), base: e.content };
+            bumpDiffs((n) => n + 1);
+          }
+          window.dispatchEvent(new CustomEvent("wb-filebase", { detail: { path: p, content: e.content } }));
+          break;
+        }
+        case "SearchResult":
+          setSearchRes({ query: e.query, results: e.results, total: e.total, truncated: e.truncated });
+          break;
+        case "GitStatus":
+          setGitBranch(e.branch || "");
+          setGitFiles(Object.fromEntries((e.files || []).map((f) => [f.path, f.code])));
+          setGitScm({ repo: e.repo !== false, branch: e.branch || "", files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })) });
+          break;
+        case "GitDone":
+          // stage/unstage/commit 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
+          if (!e.ok) addItem({ kind: "error", text: `Git ${e.op} 失败：${e.message}` });
+          else if (e.op === "commit")
+            addItem({ kind: "notice", text: `已提交：${(e.message || "").split("\n")[0]}` });
           break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
@@ -1001,6 +801,22 @@ function App() {
         case "ToolCallStarted":
           assistantBuf.current = null;
           pushThinkRow();
+          {
+            // 工作台联动：Agent 触及的文件记入「本次改动」；打开中的文件按脏/净决定冲突条或静默重载
+            const wa = (e.args || {}) as Record<string, unknown>;
+            const wp = typeof wa.path === "string" ? wa.path.replace(/\\/g, "/") : "";
+            if ((e.tool === "edit_file" || e.tool === "write_file") && wp) {
+              setRunChanged((prev) => (prev.includes(wp) ? prev : [...prev, wp]));
+              if (openFilesRef.current.some((f) => f.path === wp)) {
+                const wd = fileDocs.current[wp];
+                if (wd && wd.text !== wd.saved) setConflict(wp);
+                else {
+                  pendingReload.current.add(wp);
+                  sendCmd({ type: "ReadFile", path: wp });
+                }
+              }
+            }
+          }
           setItems((prev) => {
             const next = [...prev];
             // 参数流式阶段已建卡：就地补全最终参数；否则新建（非流式 provider/旧 daemon）
@@ -1201,12 +1017,45 @@ function App() {
   }, [view, section, conn]);
 
   const composeMessage = (text: string): string => {
-    if (!attachments.length) return text;
+    let out = text;
+    if (chatRefs.length) {
+      const parts = chatRefs.map((r) => {
+        const d = fileDocs.current[r.path];
+        let body = "";
+        if (d && d.text) {
+          const lines = d.text.split("\n");
+          const seg = lines.slice(Math.max(0, r.from - 1), r.to).join("\n");
+          body = seg.length > 4000 ? seg.slice(0, 4000) + "\n...(truncated)" : seg;
+        }
+        return (
+          `[引用] ${r.path}:${r.from}-${r.to}` +
+          (body ? `:\n\`\`\`\n${body}\n\`\`\`` : "（文件未在编辑器打开，请先用 read_file 读取该范围）")
+        );
+      });
+      out = `${out}\n\n${parts.join("\n\n")}`;
+    }
+    if (!attachments.length) return out;
     const blocks = attachments
       .map((a) => `--- 附件文件: ${a.path}${a.truncated ? "（已截断）" : ""} ---\n${a.content}`)
       .join("\n\n");
-    return `${text}\n\n${blocks}`;
+    return `${out}\n\n${blocks}`;
   };
+
+  // 用户消息里的引用标记解析：气泡里只显示问题正文 + 引用芯片，代码块不再重复贴出来
+  const parseChatRefs = (text: string): { path: string; from: number; to: number }[] => {
+    const out: { path: string; from: number; to: number }[] = [];
+    for (const m of text.matchAll(/\[引用\] ([^\n:]+):(\d+)-(\d+)/g)) {
+      if (!out.some((r) => r.path === m[1] && r.from === +m[2] && r.to === +m[3]))
+        out.push({ path: m[1], from: +m[2], to: +m[3] });
+    }
+    return out;
+  };
+  const stripRefBlocks = (text: string): string =>
+    text
+      .replace(/\[引用\] [^\n]*\n?```[\s\S]*?```/g, "")
+      .replace(/\[引用\] [^\n]*（文件未在编辑器打开[^）]*）/g, "")
+      .replace(/\n?--- 附件文件: [^\n]*---\n[\s\S]*?(?=\n\n--- 附件文件:|\n\n\[引用\]|$)/g, "")
+      .trim();
 
   // 侧栏搜索：标题/ID 即时过滤，正文全文搜索防抖 300ms
   useEffect(() => {
@@ -1257,6 +1106,140 @@ function App() {
     setInput("");
     setAttachments([]);
     setPasteImages([]);
+    setChatRefs([]);
+  };
+
+  // —— 回答中的代码引用可点击：path:114 / path:114-120 / 第 114-120 行 → 打开对应文件跳行 ——
+  // 无文件名的“第 N 行”落到点击时的活动编辑器文件；结果经 mdRender 后的 HTML 上做后处理
+  const linkifyLineRefs = (html: string): string =>
+    html
+      .replace(
+        /([\w.\-\/\\]+?\.(?:py|ts|tsx|js|jsx|mjs|json|md|toml|yaml|yml|css|html|go|rs|java|c|cpp)):(\d+)(?:[-–—](\d+))?/g,
+        (m, p, l) => `<span class="md-jump" data-path="${p}" data-line="${l}">${m}</span>`
+      )
+      .replace(/第\s*(\d+)\s*(?:[-–—~]\s*\d+\s*)?行/g, (m, l) => `<span class="md-jump" data-line="${l}">${m}</span>`);
+
+  const onChatClick = (e: React.MouseEvent) => {
+    const t = (e.target as HTMLElement).closest(".md-jump") as HTMLElement | null;
+    if (!t) return;
+    const line = parseInt(t.dataset.line || "0", 10);
+    if (!line) return;
+    const path = t.dataset.path || (activeTab.kind === "file" && activeTab.path ? activeTab.path : null);
+    if (path) openFile(path, line);
+  };
+
+  // —— 工作台动作 ——
+  const openFile = (path: string, line?: number) => {
+    const norm = path.replace(/\\/g, "/");
+    if (openFilesRef.current.some((f) => f.path === norm)) {
+      setActiveTab({ kind: "file", path: norm });
+      if (line) setReveal({ path: norm, line });
+      return;
+    }
+    pendingOpen.current[norm] = { line };
+    sendCmd({ type: "ReadFile", path: norm });
+  };
+  const openDiff = (path: string) => {
+    const norm = path.replace(/\\/g, "/");
+    if (!diffTabsRef.current.includes(norm)) diffTabsRef.current = [...diffTabsRef.current, norm];
+    if (!diffStore.current[norm]) diffStore.current[norm] = {};
+    diffReq.current.add(norm);
+    bumpDiffs((n) => n + 1);
+    setActiveTab({ kind: "diff", path: norm });
+    sendCmd({ type: "GitFileBase", path: norm });
+    sendCmd({ type: "ReadFile", path: norm });
+  };
+  const closeTab = (kind: "file" | "diff", path: string) => {
+    if (kind === "file") {
+      setOpenFiles((prev) => {
+        const next = prev.filter((f) => f.path !== path);
+        setActiveTab((a) => (a.kind === "file" && a.path === path ? { kind: "file", path: next[next.length - 1]?.path ?? null } : a));
+        return next;
+      });
+    } else {
+      diffTabsRef.current = diffTabsRef.current.filter((x) => x !== path);
+      delete diffStore.current[path];
+      bumpDiffs((n) => n + 1);
+      setActiveTab((a) => {
+        if (a.kind !== "diff" || a.path !== path) return a;
+        if (diffTabsRef.current.length) return { kind: "diff", path: diffTabsRef.current[diffTabsRef.current.length - 1] };
+        return { kind: "file", path: openFilesRef.current[openFilesRef.current.length - 1]?.path ?? null };
+      });
+    }
+  };
+  const saveFile = (path: string) => {
+    const d = fileDocs.current[path];
+    if (!d) return;
+    sendCmd({ type: "WriteWorkspaceFile", path, content: d.text });
+  };
+  const askSelection = (text: string) => {
+    setInput((prev) => (prev ? prev + "\n\n" + text : text));
+    setTimeout(() => document.getElementById("input")?.focus(), 30);
+  };
+  // 编辑器 AI 辅助：组装带 path:行号 引用的提示词，直接发给 Agent。
+  // 改码类动作在提示词里要求直接 edit_file 落盘——改完走既有联动（浮条/diff/冲突检测）。
+  const aiAction = (
+    kind: "explain" | "comment" | "refactor" | "fix" | "test" | "file-review",
+    path: string,
+    sel: string,
+    fromLine: number,
+    toLine: number
+  ) => {
+    const ref = `${path}:${fromLine}-${toLine}`;
+    const code = `\n\`\`\`\n${sel}\n\`\`\`\n`;
+    let prompt = "";
+    switch (kind) {
+      case "explain":
+        prompt = `请解释 ${ref} 的这段代码：用中文说明它在做什么、关键逻辑和潜在风险，不要修改文件。${code}`;
+        break;
+      case "comment":
+        prompt = `请给 ${ref} 的这段代码加上清晰的中文注释：直接用 edit_file 修改原文件，保持逻辑完全不变，只加注释。${code}`;
+        break;
+      case "refactor":
+        prompt = `请重构优化 ${ref} 的这段代码：直接用 edit_file 修改原文件，保持行为不变，改完简要说明你改了什么、为什么。${code}`;
+        break;
+      case "fix":
+        prompt = `请检查并修复 ${ref} 这段代码里的问题（bug、边界条件、错误处理）：直接用 edit_file 修改原文件，改完列出发现的问题。${code}`;
+        break;
+      case "test":
+        prompt = `请为 ${path} 中的以下代码写单元测试：新建一个合适的测试文件（跟随项目现有测试目录/命名习惯），并保证能直接运行。${code}`;
+        break;
+      case "file-review":
+        prompt = `请通读 ${path} 整个文件并做代码审阅：指出正确性、可读性、性能、安全方面的问题，按严重程度排序；不要修改文件，等我决定。`;
+        break;
+    }
+    if (!prompt) return;
+    setChatHidden(false); // 回答/改动说明展示在对话栏，确保可见
+    sendNow(prompt, prompt, []);
+  };
+
+  // 编辑器选区 → 对话引用 chip（去重；文件未打开也接受，Agent 发送时自行 read_file）
+  const addChatRef = (path: string, from: number, to: number) => {
+    const norm = path.replace(/\\/g, "/");
+    setChatRefs((prev) =>
+      prev.some((r) => r.path === norm && r.from === from && r.to === to) ? prev : [...prev, { path: norm, from, to }]
+    );
+    setChatHidden(false); // chip 在对话栏，收起时自动展开
+    setTimeout(() => document.getElementById("input")?.focus(), 30);
+  };
+
+  const refreshFiles = () => {
+    setFilesRefresh((n) => n + 1);
+    sendCmd({ type: "GitStatus" });
+    sendCmd({ type: "ListDir", path: "" });
+  };
+  // 工具卡片点击跳转：读→打开文件（offset 行），写→打开 diff
+  const toolJump = (it: { tool: string; args?: string }) => {
+    let a: Record<string, unknown> = {};
+    try {
+      a = it.args ? JSON.parse(it.args) : {};
+    } catch {
+      return;
+    }
+    const p = typeof a.path === "string" ? a.path : undefined;
+    if (!p) return;
+    if (it.tool === "read_file") openFile(p, typeof a.offset === "number" ? (a.offset as number) : undefined);
+    else if (it.tool === "write_file" || it.tool === "edit_file") openDiff(p);
   };
 
   // 停止当前任务（服务端 CancelRun → run cancelled Notice 复位运行态）
@@ -1420,6 +1403,8 @@ function App() {
   const composedHint = modelForm.modelName.trim() ? `实际模型串: ${composedModel}` : "填写模型名称后自动拼接 provider 前缀";
 
   const fmtDur = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+  // 文件模式 = 编辑器打开：对话栏是窄侧栏，头部/导航/compressor 用紧凑形态
+  const fileMode = editorOpen;
 
   // 首启引导：模型列表为空且从未配置过 key 时全屏展示（首件事是连接自己的模型，不是登录）
   const showOnboard =
@@ -1697,6 +1682,7 @@ function App() {
   // —— 工作区（聊天）视图 ——
   return (
     <div className="app">
+      {sidebarOpen && (
       <aside>
         <button className="newbtn" onClick={newSession} disabled={conn !== "open"}>＋ 新建会话</button>
         {sideTab === "sessions" && (
@@ -1705,6 +1691,23 @@ function App() {
             placeholder="搜索会话标题与内容…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
+          />
+        )}
+        {sideTab === "files" && (
+          <FileTree
+            listing={dirListing}
+            searchRes={searchRes}
+            changed={runChanged}
+            gitFiles={gitFiles}
+            scm={gitScm}
+            refreshTick={filesRefresh}
+            onOpen={openFile}
+            onDiff={openDiff}
+            onRefresh={refreshFiles}
+            onStage={(path) => sendCmd({ type: "GitStage", path })}
+            onStageAll={() => sendCmd({ type: "GitStageAll" })}
+            onUnstage={(path) => sendCmd({ type: "GitUnstage", path })}
+            onCommit={(message, all) => sendCmd({ type: "GitCommit", message, all })}
           />
         )}
         {sideTab === "sessions" && <h3>会话</h3>}
@@ -1729,6 +1732,16 @@ function App() {
           </button>
           <button className={sideTab === "projects" ? "on" : ""} onClick={() => setSideTab("projects")}>
             项目
+          </button>
+          <button
+            className={sideTab === "files" ? "on" : ""}
+            title="资源管理器"
+            onClick={() => {
+              setSideTab("files");
+              refreshFiles();
+            }}
+          >
+            文件
           </button>
         </div>
         {sideTab === "projects" && (
@@ -2049,13 +2062,78 @@ function App() {
             <div className="name">本地用户</div>
             <div className="sub">本地模式 · 账号体系开发中</div>
           </div>
+          <button className="gear" title="收起侧栏" onClick={() => setSidebarOpen(false)}>«</button>
           <button className="gear" title="设置" onClick={() => setView("settings")}>⚙</button>
         </div>
       </aside>
-      <div className="main">
+      )}
+      {!sidebarOpen && (
+        <button className="sb-float" title="展开侧栏" onClick={() => setSidebarOpen(true)}>
+          »
+        </button>
+      )}
+      <div className="ide">
+        <div className="ide-body">
+      {editorOpen && (
+        <>
+          <div className="editor-col">
+            {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
+            <EditorPane
+              tabs={openFiles}
+              diffTabs={diffTabsRef.current}
+              active={activeTab}
+              docs={fileDocs}
+              conflict={conflict}
+              diffData={diffStore.current}
+              reveal={reveal}
+              gitLabel={(pp) => gitFiles[pp] || ""}
+              onActivate={(kind, path) => setActiveTab({ kind, path })}
+              onClose={closeTab}
+              onSave={saveFile}
+              onText={() => {}}
+              onDirty={(pp, dirty) =>
+                setOpenFiles((prev) => prev.map((f) => (f.path === pp ? { ...f, dirty } : f)))
+              }
+              onAsk={askSelection}
+              onAiAction={aiAction}
+              onAddRef={addChatRef}
+              onJump={openFile}
+              onConflictReload={() => {
+                if (conflict) {
+                  pendingReload.current.add(conflict);
+                  sendCmd({ type: "ReadFile", path: conflict });
+                }
+                setConflict(null);
+              }}
+              onConflictKeep={() => setConflict(null)}
+              onBrowse={() => setSideTab("files")}
+            />
+          </div>
+          <div
+            className="col-splitter"
+            onMouseDown={(e) => {
+              chatDrag.current = { startX: e.clientX, startW: chatW };
+              e.preventDefault();
+            }}
+            onDoubleClick={() => setChatW(480)}
+            title="拖拽调对话栏宽 · 双击复位"
+          />
+        </>
+      )}
+      <div
+        className="main chat-col"
+        style={
+          editorOpen && chatHidden
+            ? { display: "none" } // 收起对话栏：编辑器占满主区，右缘浮出 « 重开按钮
+            : editorOpen
+              ? { width: chatW, minWidth: 340, flex: "none" }
+              : { flex: 1 }
+        }
+      >
         <header>
           <span className={"dot " + dot} />
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
+          {!fileMode && (
           <span className="meta">
             {conn} · {shortModel(currentModel)}
             {running ? ` · ⏱ ${fmtClock(elapsed)}` : ""}
@@ -2066,6 +2144,7 @@ function App() {
               : ""}
             {sessCost?.cost_usd != null ? ` · ${fmtCost(sessCost.cost_usd)}` : ""}
           </span>
+          )}
           {(() => {
             if (!ctxInfo || ctxInfo.window <= 0 || ctxInfo.tokens <= 0) return null;
             const pct = Math.min(100, (ctxInfo.tokens / ctxInfo.window) * 100);
@@ -2085,6 +2164,18 @@ function App() {
               </button>
             );
           })()}
+          {editorOpen && !chatHidden && (
+            <button className="term-toggle" title="收起对话栏（编辑器占满主区）" onClick={() => setChatHidden(true)}>
+              »
+            </button>
+          )}
+          <button
+            className={"term-toggle" + (editorOpen ? " on" : "")}
+            title={editorOpen ? "关闭编辑器（对话占满主区）" : "打开编辑器"}
+            onClick={() => setEditorOpen((o) => !o)}
+          >
+            <Icon name="code" size={14} />
+          </button>
           <button
             className={"term-toggle" + (termOpen ? " on" : "")}
             title={termOpen ? "收起终端" : "打开终端"}
@@ -2121,7 +2212,7 @@ function App() {
             })()}
           </div>
         )}
-        {outlineItems.length > 1 && (
+        {!fileMode && outlineItems.length > 1 && (
           <div className="outline-nav">
             {outlineItems.map((it) => (
               <div
@@ -2141,16 +2232,17 @@ function App() {
             ))}
           </div>
         )}
-        {outlineTip && (
+        {!fileMode && outlineTip && (
           <div className="outline-tip" style={{ top: outlineTip.top }}>{outlineTip.text}</div>
         )}
-        <div id="msgs" ref={listRef} className={outlineItems.length > 1 ? "with-nav" : ""}>
+        <div id="msgs" ref={listRef} className={outlineItems.length > 1 ? "with-nav" : ""} onClick={onChatClick}>
           {items.map((it) => {
             if (it.kind === "think") {
               return <ThinkRow key={it.id} it={it} />;
             }
             if (it.kind === "tool") {
               const m = it.meta;
+              const jumpable = ["read_file", "write_file", "edit_file"].includes(it.tool);
               const live = it.status === "running" || it.status === "streaming";
               const secs = live && it.startedAt ? Math.floor((Date.now() - it.startedAt) / 1000) : null;
               const outLine = it.output ? it.output.trimEnd().split("\n").pop() || "" : "";
@@ -2158,6 +2250,7 @@ function App() {
               return (
                 <div
                   key={it.id}
+                  onClick={jumpable ? () => toolJump(it) : undefined}
                   className={
                     "tool " +
                     (it.status === "done"
@@ -2168,9 +2261,9 @@ function App() {
                           ? "stopped"
                           : live
                             ? "live"
-                            : "")
+                            : "") + (jumpable ? " jump" : "")
                   }
-                  title={(it.args || it.argsRaw || it.tool) + (it.status === "fail" && it.detail ? `\n——\n${it.detail}` : "")}
+                  title={(it.args || it.argsRaw || it.tool) + (jumpable ? "\n点击在工作台打开" : "") + (it.status === "fail" && it.detail ? `\n——\n${it.detail}` : "")}
                 >
                   <span className="ticon"><Icon name={m?.icon || "zap"} size={12} /></span>
                   <span className="tverb">{m?.verb || it.tool}</span>
@@ -2204,9 +2297,25 @@ function App() {
               );
             }
             if (it.kind === "user") {
+              const refs = it.refs ?? parseChatRefs(it.text);
+              const shown = stripRefBlocks(it.text);
               return (
                 <div key={it.id} className="msg user" data-mid={it.id}>
                   <div className="bubble">
+                    {refs.length > 0 && (
+                      <div className="atchips">
+                        {refs.map((r, i) => (
+                          <span
+                            key={i}
+                            className="chip refchip"
+                            title={`${r.path}:${r.from}-${r.to}（已随消息发给模型），点击跳转`}
+                            onClick={() => openFile(r.path, r.from)}
+                          >
+                            {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {it.images && it.images.length > 0 && (
                       <div className="imgs">
                         {it.images.map((im, i) => (
@@ -2219,7 +2328,7 @@ function App() {
                         ))}
                       </div>
                     )}
-                    {it.text}
+                    {shown}
                   </div>
                   {/* 分支按钮在文档流里（悬停显形），不再悬浮压字、也不会因移出消息而点不到 */}
                   <div className="msg-foot user-foot">
@@ -2235,7 +2344,7 @@ function App() {
             return (
               <div key={it.id} className={"msg " + it.kind} data-mid={it.kind === "assistant" ? it.id : undefined}>
                 {it.kind === "assistant" && it.text ? (
-                  <div className="md" dangerouslySetInnerHTML={{ __html: mdRender(it.text) }} />
+                  <div className="md" dangerouslySetInnerHTML={{ __html: linkifyLineRefs(mdRender(it.text)) }} />
                 ) : (
                   it.text
                 )}
@@ -2312,8 +2421,45 @@ function App() {
             </button>
           </div>
         ))}
-        {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
+        {runChanged.length > 0 && (
+          <div className="runbar">
+            <span className="runbar-label">本次任务改动 {runChanged.length} 个文件</span>
+            {runChanged.map((p) => (
+              <button key={p} className="runbar-chip" title={`查看改动：${p}`} onClick={() => openDiff(p)}>
+                {p.split(/[\\/]/).pop()}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button className="runbar-clear" title="收起" onClick={() => setRunChanged([])}>
+              <Icon name="x" size={11} />
+            </button>
+          </div>
+        )}
         <div className="composer">
+          {chatRefs.length > 0 && (
+            <div className="atchips">
+              {chatRefs.map((r, i) => (
+                <span
+                  key={i}
+                  className="chip refchip"
+                  title={`点击跳转到 ${r.path}:${r.from}`}
+                  onClick={() => openFile(r.path, r.from)}
+                >
+                  <Icon name="download" size={11} />
+                  {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
+                  <span
+                    className="chipx"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setChatRefs((prev) => prev.filter((_, j) => j !== i));
+                    }}
+                  >
+                    ×
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           {pasteImages.length > 0 && (
             <div className="atchips">
               {pasteImages.map((p, i) => (
@@ -2366,17 +2512,17 @@ function App() {
             }}
             disabled={conn !== "open"}
           />
-          <div className="controls">
+          <div className={"controls" + (fileMode ? " compact" : "")}>
             <button className="ctl" title="添加工作区文件为附件" onClick={() => setShowAttach((s) => !s)}>＋</button>
             <div className="pdrop" ref={permDropRef}>
               <button
-                className={"ctl pchip" + (permMode === "bypass" ? " hot" : "")}
-                title="权限模式"
+                className={"ctl pchip" + (permMode === "bypass" ? " hot" : "") + (fileMode ? " iconly" : "")}
+                title={`权限模式：${(PERM_META[permMode] || PERM_META.default).label} · ${(PERM_META[permMode] || PERM_META.default).desc}`}
                 onClick={() => setPermOpen((s) => !s)}
               >
-                <Icon name={(PERM_META[permMode] || PERM_META.default).icon} size={12} />
-                {(PERM_META[permMode] || PERM_META.default).label}
-                <Icon name="chev" size={11} />
+                <Icon name={(PERM_META[permMode] || PERM_META.default).icon} size={fileMode ? 14 : 12} />
+                {!fileMode && (PERM_META[permMode] || PERM_META.default).label}
+                {!fileMode && <Icon name="chev" size={11} />}
               </button>
               {permOpen && (
                 <div className="pmenu">
@@ -2437,6 +2583,14 @@ function App() {
           </div>
         </div>
       </div>
+      {!editorOpen && termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
+      {chatHidden && editorOpen && (
+        <button className="chat-float" title="展开对话栏" onClick={() => setChatHidden(false)}>
+          «
+        </button>
+      )}
+      </div>
+      </div>
       {switching && (
         <div className="switching-mask">
           <div className="switching-card">
@@ -2451,7 +2605,7 @@ function App() {
           <div className="onboard-card">
             <div className="onboard-title">连接你的模型</div>
             <div className="onboard-sub">
-              My-Harness 不绑定任何厂商：填任意 OpenAI 兼容端点即可开始。
+              Y Harness 不绑定任何厂商：填任意 OpenAI 兼容端点即可开始。
               API Key 与全部对话数据只保存在本机 ~/.my-harness/，无账号、无云同步、无遥测。
             </div>
             <div className="prow">

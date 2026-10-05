@@ -16,11 +16,14 @@ if "%VER%"=="" (
 echo 目标版本: %VER%
 
 echo.
-echo [1/5] 关闭正在运行的 My-Harness / daemon / electron（释放文件锁）...
+echo [1/5] 关闭正在运行的 My-Harness / daemon / electron（名称+路径宽匹配，兼容改名版）...
 taskkill /F /IM My-Harness.exe >nul 2>&1
+taskkill /F /IM "Y Harness.exe" >nul 2>&1
 taskkill /F /IM harness-server.exe >nul 2>&1
 taskkill /F /IM electron.exe >nul 2>&1
-%SystemRoot%\System32\ping.exe -n 2 127.0.0.1 >nul
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command "Get-Process | Where-Object { $_.Path -like '*my-harness*' -or $_.ProcessName -match 'harness|electron' } | Stop-Process -Force -ErrorAction SilentlyContinue" >nul 2>&1
+%SystemRoot%\System32\ping.exe -n 3 127.0.0.1 >nul
+if exist "apps\desktop\dist\win-unpacked" rd /s /q "apps\desktop\dist\win-unpacked" >nul 2>&1
 
 echo.
 echo [2/5] 重建 Python sidecar（PyInstaller，约 3-4 分钟）...
@@ -79,12 +82,14 @@ popd
 
 echo.
 echo [5/5] 启动新版本...
-start "" "apps\desktop\dist\win-unpacked\My-Harness.exe"
+set "APP_EXE="
+for %%f in ("apps\desktop\dist\win-unpacked\*.exe") do set "APP_EXE=%%~ff"
+if defined APP_EXE start "" "%APP_EXE%"
 
 echo.
 echo ============================================
 echo   打包完成：
-echo     便携版  apps\desktop\dist\win-unpacked\My-Harness.exe
-echo     安装包  apps\desktop\dist\My-Harness Setup %VER%.exe
+echo     便携版  %APP_EXE%
+echo     安装包  apps\desktop\dist\Y Harness Setup %VER%.exe
 echo ============================================
 endlocal

@@ -89,8 +89,9 @@ def _open_dir(path: Path) -> None:
 class ClientConnection:
     """单个 WS 客户端：发送经队列串行化（回调线程安全）；持有挂起的审批 future。"""
 
-    def __init__(self, send_json: Callable[[dict], Any]):
+    def __init__(self, send_json: Callable[[dict], Any], aclose: Callable[[], Any] | None = None):
         self._send_json = send_json
+        self._aclose = aclose  # pump 送失败时关闭 ws：让前端 onclose 触发重连，而不是静默假死
         self._queue: asyncio.Queue = asyncio.Queue()
         self.pending: dict[str, asyncio.Future] = {}
 
@@ -100,7 +101,16 @@ class ClientConnection:
     async def pump(self) -> None:
         while True:
             event = await self._queue.get()
-            await self._send_json(event)
+            try:
+                await self._send_json(event)
+            except Exception:
+                # 连接已坏：关掉 socket（幂等），结束投递；ws_endpoint 的 finally 负责收尾
+                if self._aclose:
+                    try:
+                        await self._aclose()
+                    except Exception:
+                        pass
+                return
 
     async def ask(self, tool_desc: str, reason: str) -> str:
         rid = uuid.uuid4().hex[:12]
@@ -221,8 +231,42 @@ class ServerState:
                     loop.provider.thinking = level
             self._notify({"type": "Notice", "text": f"思考档位 → {level}"})
             self._notify(self._settings_payload())
+        elif t == "GotoDef":
+            self._goto_def(msg)
+        elif t == "LintCheck":
+            self._lint_check(msg)
         elif t == "ReadWorkspaceFile":
             self._read_workspace_file(msg)
+        elif t == "ListDir":
+            self._list_dir(msg)
+        elif t == "ReadFile":
+            self._read_file_any(msg)
+        elif t == "WriteWorkspaceFile":
+            self._write_ws_file(msg)
+        elif t == "CreateEntry":
+            self._create_entry(msg)
+        elif t == "MoveEntry":
+            self._move_entry(msg)
+        elif t == "DeleteEntry":
+            self._delete_entry(msg)
+        elif t == "SearchWorkspace":
+            self._search_ws(msg)
+        elif t == "GitStatus":
+            self._git_status()
+        elif t == "GitStage":
+            self._git_stage(msg)
+        elif t == "GitStageAll":
+            rc, out = self._run_git2("add", "-A")  # 全部暂存：含修改/新增/删除
+            self._notify({"type": "GitDone", "op": "stage", "ok": rc == 0, "message": out})
+            self._git_status()
+        elif t == "GitUnstage":
+            self._git_unstage(msg)
+        elif t == "GitCommit":
+            self._git_commit(msg)
+        elif t == "GitDiff":
+            self._git_diff(msg)
+        elif t == "GitFileBase":
+            self._git_file_base(msg)
         elif t == "UploadImage":
             self._upload_image(msg)
         elif t == "RenameSession":
@@ -639,6 +683,277 @@ class ServerState:
         merged.update(self.settings.get("mcp_servers", {}))
         return merged
 
+    # —— 工作台（IDE）：文件树 / 编辑器 / 搜索 / Git（协议只增，安全边界同 ReadWorkspaceFile）——
+    _SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".my-harness"}
+
+    def _ws_path(self, rel: str) -> Path:
+        """相对工作区的路径 → 绝对路径；越界一律拒绝（与工具层 _resolve 同口径）。"""
+        root = Path(self.cfg.workspace).resolve()
+        p = Path(rel).expanduser()
+        if not p.is_absolute():
+            p = root / p
+        p = p.resolve()
+        if not p.is_relative_to(root):
+            raise ValueError(f"path '{rel}' escapes the workspace")
+        return p
+
+    def _gitignore_matcher(self):
+        """根 .gitignore 的朴素匹配（前缀/通配/目录），够文件树过滤用，不追求语义完备。"""
+        import fnmatch
+
+        pats: list[str] = []
+        try:
+            gi = self._ws_path(".gitignore")
+            if gi.is_file():
+                for line in gi.read_text(encoding="utf-8", errors="replace").splitlines():
+                    s = line.strip()
+                    if s and not s.startswith("#"):
+                        pats.append(s.rstrip("/"))
+        except Exception:
+            pass
+
+        def match(rel_posix: str) -> bool:
+            name = rel_posix.rsplit("/", 1)[-1]
+            for pat in pats:
+                if fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel_posix, pat) or rel_posix.startswith(pat + "/"):
+                    return True
+            return False
+
+        return match
+
+    def _list_dir(self, msg: dict) -> None:
+        rel = msg.get("path", "")
+        d = self._ws_path(rel or ".")
+        if not d.is_dir():
+            raise FileNotFoundError(f"{rel or '.'} is not a directory")
+        ignored = self._gitignore_matcher()
+        entries = []
+        for p in sorted(d.iterdir(), key=lambda x: (x.is_file(), x.name.lower())):
+            if p.name in self._SKIP_DIRS or ignored(p.name):
+                continue
+            try:
+                st = p.stat()
+                entries.append(
+                    {
+                        "name": p.name,
+                        "kind": "dir" if p.is_dir() else "file",
+                        "size": st.st_size,
+                        "mtime": int(st.st_mtime),
+                    }
+                )
+            except OSError:
+                continue
+        self._notify(
+            {"type": "DirListing", "path": rel, "entries": entries[:2000]}
+        )
+
+    def _read_file_any(self, msg: dict) -> None:
+        """编辑器读文件：二进制探测 + 1MB 上限（附件走的 ReadWorkspaceFile 保持原样）。"""
+        p = self._ws_path(msg.get("path", ""))
+        if not p.is_file():
+            raise FileNotFoundError(f"{msg.get('path')} does not exist")
+        raw = p.read_bytes()
+        binary = b"\0" in raw[:8192]
+        content, truncated = "", False
+        if not binary:
+            data = raw[: 1024 * 1024]
+            truncated = len(raw) > len(data)
+            content = data.decode("utf-8", errors="replace")
+            if truncated:
+                content += "\n\n[truncated: file larger than 1MB]"
+        self._notify(
+            {
+                "type": "FileContent",
+                "path": msg.get("path", ""),
+                "content": content,
+                "binary": binary,
+                "truncated": truncated,
+                "size": len(raw),
+            }
+        )
+
+    def _write_ws_file(self, msg: dict) -> None:
+        p = self._ws_path(msg.get("path", ""))
+        content = msg.get("content", "")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        self._notify({"type": "FileSaved", "path": msg.get("path", ""), "size": len(content.encode("utf-8"))})
+
+    def _create_entry(self, msg: dict) -> None:
+        p = self._ws_path(msg.get("path", ""))
+        if p.exists():
+            raise FileExistsError(f"{msg.get('path')} already exists")
+        if msg.get("kind") == "dir":
+            p.mkdir(parents=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
+        self._notify({"type": "Notice", "text": f"已创建 {msg.get('path')}"})
+
+    def _move_entry(self, msg: dict) -> None:
+        import shutil
+
+        src = self._ws_path(msg.get("path", ""))
+        dst = self._ws_path(msg.get("to", ""))
+        if not src.exists():
+            raise FileNotFoundError(f"{msg.get('path')} does not exist")
+        if dst.exists():
+            raise FileExistsError(f"{msg.get('to')} already exists")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))
+        self._notify({"type": "Notice", "text": f"已移动 {msg.get('path')} → {msg.get('to')}"})
+
+    def _delete_entry(self, msg: dict) -> None:
+        """删除 = 移入工作区回收站 .my-harness/trash/（可手动找回），不直接 os.remove。"""
+        import shutil
+        import time as _t
+
+        src = self._ws_path(msg.get("path", ""))
+        if not src.exists():
+            raise FileNotFoundError(f"{msg.get('path')} does not exist")
+        trash = Path(self.cfg.workspace).resolve() / ".my-harness" / "trash"
+        trash.mkdir(parents=True, exist_ok=True)
+        target = trash / f"{int(_t.time())}_{src.name}"
+        shutil.move(str(src), str(target))
+        self._notify({"type": "Notice", "text": f"已删除 {msg.get('path')}（可在 .my-harness/trash 找回）"})
+
+    def _search_ws(self, msg: dict) -> None:
+        """跨文件搜索（复用 grep 语义）：单事件返回，≤300 命中，二进制/跳过目录不进。"""
+        import re as _re
+
+        q = msg.get("query", "")
+        if not q:
+            raise ValueError("query is required")
+        is_regex = bool(msg.get("is_regex"))
+        try:
+            pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
+        except _re.error as e:
+            raise ValueError(f"invalid regex: {e}")
+        limit = min(int(msg.get("max", 300)), 500)
+        root = Path(self.cfg.workspace).resolve()
+        ignored = self._gitignore_matcher()
+        results, truncated = [], False
+        for p in root.rglob("*"):
+            if len(results) >= limit:
+                truncated = True
+                break
+            if not p.is_file():
+                continue
+            rel = p.relative_to(root).as_posix()
+            parts = rel.split("/")
+            if any(seg in self._SKIP_DIRS or ignored(seg) for seg in parts[:-1]) or ignored(rel):
+                continue
+            try:
+                if p.stat().st_size > 256 * 1024:
+                    continue
+                raw = p.read_bytes()
+                if b"\0" in raw[:8192]:
+                    continue
+                text = raw.decode("utf-8", errors="replace")
+            except OSError:
+                continue
+            for i, line in enumerate(text.splitlines(), 1):
+                m = pat.search(line)
+                if m:
+                    results.append({"path": rel, "line": i, "col": m.start() + 1, "text": line[:300]})
+                    if len(results) >= limit:
+                        truncated = True
+                        break
+        self._notify(
+            {"type": "SearchResult", "query": q, "results": results, "total": len(results), "truncated": truncated}
+        )
+
+    def _run_git(self, *args: str, timeout: int = 10) -> str | None:
+        import subprocess
+
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(Path(self.cfg.workspace).resolve()), *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return r.stdout if r.returncode == 0 else None
+
+    def _git_status(self) -> None:
+        out = self._run_git("status", "--porcelain=v1", "-b")
+        if out is None:
+            self._notify({"type": "GitStatus", "repo": False, "branch": "", "files": []})
+            return
+        branch, files = "", []
+        for line in out.splitlines():
+            if line.startswith("## "):
+                branch = line[3:].split("...")[0].strip()
+                continue
+            if len(line) >= 4:
+                # xy 保留原始两位码（X=暂存区状态 Y=工作区状态）：前端据 X/Y 拆「暂存/更改」两栏
+                files.append(
+                    {
+                        "path": line[3:].strip().strip('"'),
+                        "code": line[:2].strip() or "??",
+                        "xy": line[:2],
+                    }
+                )
+        self._notify({"type": "GitStatus", "repo": True, "branch": branch, "files": files})
+
+    def _run_git2(self, *args: str, timeout: int = 30) -> tuple[int, str]:
+        """需要结果码的 git 调用（stage/commit 等写操作）：返回 (returncode, 合并输出)。"""
+        import subprocess
+
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(Path(self.cfg.workspace).resolve()), *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 1, str(e)
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    def _git_stage(self, msg: dict) -> None:
+        rc, out = self._run_git2("add", "--", msg.get("path", ""))
+        self._notify({"type": "GitDone", "op": "stage", "ok": rc == 0, "message": out})
+        self._git_status()
+
+    def _git_unstage(self, msg: dict) -> None:
+        path = msg.get("path", "")
+        rc, out = self._run_git2("reset", "-q", "HEAD", "--", path)
+        if rc != 0:
+            # 初始提交（无 HEAD）：git reset 会失败，改用 git rm --cached 移出暂存区
+            rc, out = self._run_git2("rm", "--cached", "-q", "--", path)
+        self._notify({"type": "GitDone", "op": "unstage", "ok": rc == 0, "message": out})
+        self._git_status()
+
+    def _git_commit(self, msg: dict) -> None:
+        message = (msg.get("message") or "").strip()
+        if not message:
+            self._notify({"type": "GitDone", "op": "commit", "ok": False, "message": "提交信息为空"})
+            return
+        args = ["commit", "-m", message]
+        if msg.get("all"):
+            args.insert(1, "-a")  # 无暂存内容时的一键全部提交（VSCode 式）
+        rc, out = self._run_git2(*args)
+        self._notify({"type": "GitDone", "op": "commit", "ok": rc == 0, "message": out})
+        self._git_status()
+
+    def _git_diff(self, msg: dict) -> None:
+        path = msg.get("path", "")
+        diff = self._run_git("diff", "--", path) or ""
+        self._notify({"type": "GitDiff", "path": path, "diff": diff})
+
+    def _git_file_base(self, msg: dict) -> None:
+        """diff 视图的「改前」版本：git index 版本；未跟踪文件 base = 空串。"""
+        path = msg.get("path", "")
+        base = self._run_git("show", f":{path}")
+        self._notify({"type": "FileBase", "path": path, "content": base if base is not None else ""})
+
     def _upload_image(self, msg: dict) -> None:
         """粘贴的图片落盘到工作区 attachments/，并以 base64 回传（发送时作为多模态块）。"""
         import base64
@@ -667,6 +982,143 @@ class ServerState:
                 "bytes": len(raw),
             }
         )
+
+    def _goto_def(self, msg: dict) -> None:
+        """轻量跳转定义（无 LSP）：全工作区搜 def/class 定义，同文件优先；
+        找不到函数/类时退回本文件内的变量赋值。Ctrl+点击标识符触发。"""
+        import re as _re
+
+        name = (msg.get("name") or "").strip()
+        from_path = (msg.get("path") or "").replace("\\", "/")
+        root = Path(self.cfg.workspace).resolve()
+        hit: tuple[str, int] | None = None
+        if name and _re.match(r"^[A-Za-z_]\w*$", name):
+            skip = (".git", "node_modules", ".venv", "venv", "__pycache__", ".my-harness")
+            pat = _re.compile(rf"^\s*(?:async\s+)?(?:def|class)\s+{_re.escape(name)}\b")
+            hits: list[tuple[str, int]] = []
+            try:
+                for p in sorted(root.rglob("*.py")):
+                    rel = p.relative_to(root).as_posix()
+                    if any(part in skip for part in p.parts):
+                        continue
+                    try:
+                        if p.stat().st_size > 1_000_000:
+                            continue
+                        for i, line in enumerate(
+                            p.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+                        ):
+                            if pat.match(line):
+                                hits.append((rel, i))
+                                break
+                    except OSError:
+                        continue
+                    if len(hits) >= 50:
+                        break
+            except OSError:
+                pass
+            same = [h for h in hits if h[0] == from_path]
+            hit = (same or hits)[0] if hits else None
+            if hit is None and from_path:
+                # 变量兜底：仅在来源文件里搜赋值行
+                fp = root / from_path
+                try:
+                    if fp.is_relative_to(root) and fp.is_file():
+                        pat_v = _re.compile(rf"^\s*{_re.escape(name)}\s*[:=]")
+                        for i, line in enumerate(
+                            fp.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+                        ):
+                            if pat_v.match(line):
+                                hit = (from_path, i)
+                                break
+                except OSError:
+                    pass
+        self._notify(
+            {
+                "type": "GotoDefResult",
+                "req": msg.get("req"),
+                "name": name,
+                "file": hit[0] if hit else None,
+                "line": hit[1] if hit else None,
+            }
+        )
+
+    def _lint_check(self, msg: dict) -> None:
+        """编辑器语法校验（纯进程内，零子进程）：py 用 compile()，json 用 loads()；
+        py 额外探测 pyflakes（可选依赖，装了就有未定义变量/未用导入等提示）。"""
+        path = msg.get("path", "")
+        text = msg.get("text", "")
+        req = msg.get("req")
+        diags: list[dict] = []
+        ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        if ext == "py":
+            try:
+                compile(text, path, "exec")
+            except SyntaxError as e:
+                diags.append(
+                    {
+                        "line": e.lineno or 1,
+                        "col": (e.offset or 1) - 1,
+                        "end_line": e.end_lineno or e.lineno or 1,
+                        "end_col": (e.end_offset or e.offset or 1) - 1,
+                        "message": f"SyntaxError: {e.msg}",
+                        "severity": "error",
+                    }
+                )
+            else:
+                diags.extend(self._pyflakes_diags(path, text))
+        elif ext == "json":
+            import json as _json
+
+            try:
+                _json.loads(text)
+            except ValueError as e:
+                line = col = 0
+                import re as _re
+
+                m = _re.search(r"line (\d+)(?: column (\d+))?", str(e))
+                if m:
+                    line, col = int(m.group(1)), int(m.group(2) or 1)
+                diags.append(
+                    {
+                        "line": line or 1,
+                        "col": max(0, col - 1),
+                        "end_line": line or 1,
+                        "end_col": col or 1,
+                        "message": str(e),
+                        "severity": "error",
+                    }
+                )
+        self._notify({"type": "LintResult", "path": path, "req": req, "diagnostics": diags})
+
+    @staticmethod
+    def _pyflakes_diags(path: str, text: str) -> list[dict]:
+        try:
+            from pyflakes.api import check
+            from pyflakes.reporter import Reporter
+        except ImportError:
+            return []
+        import io
+
+        out = io.StringIO()
+        reporter = Reporter(out, out)
+        check(text, f"<{path}>", reporter)
+        diags = []
+        import re as _re
+
+        for m in _re.finditer(r"<[^>]+>:(\d+):(\d+): ([^\n]+)", out.getvalue()):
+            line, col, message = int(m.group(1)), int(m.group(2)), m.group(3)
+            severity = "warning" if "undefined name" in message or "imported but unused" in message or "redefinition" in message else "info"
+            diags.append(
+                {
+                    "line": line,
+                    "col": col,
+                    "end_line": line,
+                    "end_col": col + 1,
+                    "message": message,
+                    "severity": severity,
+                }
+            )
+        return diags
 
     def _read_workspace_file(self, msg: dict) -> None:
         """读取工作区内文件（附件场景），路径安全限制 + 50K 字符上限。"""
@@ -990,13 +1442,20 @@ def create_app(
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket):
         await websocket.accept()
-        client = ClientConnection(websocket.send_json)
+        client = ClientConnection(websocket.send_json, websocket.close)
         state.client = client
         pump = asyncio.create_task(client.pump())
         try:
             while True:
                 msg = await websocket.receive_json()
-                await state.handle(msg)
+                try:
+                    await state.handle(msg)
+                except Exception as e:
+                    # 单条命令的异常不拆连接：报给前端，循环继续（否则一条坏命令会让整个 UI 假死）
+                    try:
+                        await websocket.send_json({"type": "Error", "error": f"{type(e).__name__}: {e}"})
+                    except Exception:
+                        pass
         except WebSocketDisconnect:
             pass
         finally:

@@ -9,7 +9,7 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  external: ["electron"],
+  external: ["electron", "@lydell/node-pty"], // pty 是原生模块：保持 require 运行时解析，不进 bundle
   logLevel: "info",
 });
 
@@ -23,6 +23,9 @@ await esbuild.build({
   logLevel: "info",
 });
 
+// xterm 的 css 直接拷成 renderer/bundle.css（electron-builder files 里带上）
+import fs from "fs";
+
 await esbuild.build({
   entryPoints: ["renderer/app.tsx"],
   outfile: "renderer/bundle.js",
@@ -31,4 +34,8 @@ await esbuild.build({
   minify: true,
   logLevel: "info",
 });
+fs.copyFileSync(
+  "node_modules/@xterm/xterm/css/xterm.css",
+  "renderer/bundle.css"
+);
 console.log("main -> main.cjs, renderer bundled -> renderer/bundle.js");

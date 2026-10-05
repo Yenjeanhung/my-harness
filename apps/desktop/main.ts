@@ -7,6 +7,7 @@ import type { ChildProcess } from "child_process";
 import http from "http";
 import fs from "fs";
 import path from "path";
+import * as nodePty from "@lydell/node-pty";
 import type { IPty } from "@lydell/node-pty";
 
 const PORT = process.env.MYHARNESS_PORT || "8765";
@@ -179,7 +180,7 @@ ipcMain.handle("term-create", (_e, cols: number, rows: number) => {
   const shell =
     process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
   const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
-  const pty = spawn(shell, shellArgs, {
+  const pty = nodePty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: Math.max(20, Math.min(cols || 80, 500)),
     rows: Math.max(5, Math.min(rows || 24, 200)),

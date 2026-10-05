@@ -124,6 +124,7 @@ class ServerState:
         self.client: ClientConnection | None = None
         self.sessions: dict[str, tuple[Session, ReActLoop]] = {}
         self.running: dict[str, asyncio.Task] = {}
+        self.static_tokens: dict[str, int] = {}  # session_id → 静态前缀 token 估算（系统提示词+工具）
         self.mcp_conns: list = []
         self.settings = load_settings(cfg.data_dir)  # {model?, api_key?, api_base?, models?} 优先于 toml
         # 迁移：顶层 model 有值但列表为空 → 合成条目（models 列表 = 所有已保存配置，仅一个 active）
@@ -503,6 +504,10 @@ class ServerState:
         from ..orchestrator.subagent import build_subagent_tool
 
         loop.registry.register(build_subagent_tool(loop, self.store))
+        # 静态前缀 token 估算（系统提示词+工具 schema，chars/4 同 ContextEngine 口径）：上下文弹窗用
+        self.static_tokens[sess.id] = (
+            len(self.system) + sum(len(json.dumps(t)) for t in loop.registry.specs())
+        ) // 4
         self.sessions[sess.id] = (sess, loop)
         event = "SessionCreated" if created else "SessionResumed"
         self._notify({"type": event, "session_id": sess.id, "mode": perms.mode})
@@ -888,13 +893,16 @@ class ServerState:
                         "text": chunk,
                     }
                 ),
-                # 每轮模型返回后推送本 run 累计 token（顶栏「会话 ↑↓tok」实时跳动）
-                on_usage=lambda u: self._notify(
+                # 每轮模型返回后推送本 run 累计 token + 当前上下文规模（顶栏实时用量与上下文容量弹窗）
+                on_usage=lambda u, ctx: self._notify(
                     {
                         "type": "Usage",
                         "session_id": sid,
                         "input_tokens": u.input_tokens,
                         "output_tokens": u.output_tokens,
+                        "context_tokens": ctx,
+                        "context_window": self.cfg.context_window,
+                        "static_tokens": self.static_tokens.get(sid, 0),
                     }
                 ),
             )

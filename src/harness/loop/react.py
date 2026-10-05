@@ -92,7 +92,7 @@ class ReActLoop:
         on_reason: DeltaCallback | None = None,
         on_tool_args: ToolArgsCallback | None = None,
         on_tool_output: ToolOutputCallback | None = None,
-        on_usage: Callable[[Usage], None] | None = None,
+        on_usage: Callable[[Usage, int], None] | None = None,  # (累计用量, 当前上下文规模=最后一轮 input tokens)
     ) -> str:
         budget = budget or Budget()
         self.current_budget = budget
@@ -147,14 +147,14 @@ class ReActLoop:
                 **chat_kwargs,
             )
             usage_total.add(result.usage)
-            if on_usage:
-                on_usage(usage_total)  # 每轮模型返回后推送累计用量（含子代理共享部分），UI 实时显示
             if self.context_engine:
                 last_input = (
                     result.usage.input_tokens
                     if result.usage and result.usage.input_tokens
                     else self.context_engine.estimate(msgs)
                 )
+            if on_usage:
+                on_usage(usage_total, last_input)  # 每轮推送：累计用量 + 当前上下文规模（UI 实时显示）
 
             if result.tool_uses:
                 blocks: list = [TextBlock(text=result.text)] if result.text else []

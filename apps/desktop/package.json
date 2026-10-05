@@ -38,7 +38,11 @@
       "main.cjs",
       "preload.cjs",
       "renderer/index.html",
-      "renderer/bundle.js"
+      "renderer/bundle.js",
+      "renderer/bundle.css"
+    ],
+    "asarUnpack": [
+      "node_modules/@lydell/**"
     ],
     "extraResources": [
       {

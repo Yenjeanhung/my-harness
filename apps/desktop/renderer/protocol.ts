@@ -145,7 +145,15 @@ export type WsEvent =
   | { type: "ToolCallArgs"; call_id: string; tool: string; args_text: string }
   | { type: "ToolCallStarted"; call_id?: string; tool: string; args?: unknown }
   | { type: "ToolCallOutput"; call_id: string; tool: string; text: string }
-  | { type: "Usage"; session_id?: string; input_tokens: number; output_tokens: number }
+  | {
+      type: "Usage";
+      session_id?: string;
+      input_tokens: number;
+      output_tokens: number;
+      context_tokens?: number; // 当前上下文规模（最后一轮 input tokens）
+      context_window?: number; // 上下文窗口上限
+      static_tokens?: number; // 静态前缀估算（系统提示词+工具 schema）
+    }
   | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)

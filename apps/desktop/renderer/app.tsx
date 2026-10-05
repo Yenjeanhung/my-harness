@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { createRoot } from "react-dom/client";
 import { marked } from "marked";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
 import type {
   Img,
   SessionInfo,
@@ -204,6 +206,13 @@ const ICON_PATHS = {
     </>
   ),
   chev: <path d="M6 9l6 6 6-6" />,
+  brain: (
+    <>
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M12 5v13" />
+    </>
+  ),
   copy: (
     <>
       <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -239,10 +248,141 @@ function ThinkRow({ it }: { it: ThinkItem }) {
         title={it.text ? (open ? "收起思考内容" : "展开思考内容") : ""}
       >
         <Icon name="cpu" size={12} />
-        思考{it.secs ? ` · 持续了 ${it.secs} 秒` : ""}
+        思考{it.secs ? ` · 持续了 ${fmtClockCn(it.secs)}` : ""}
         {it.text ? <span className="think-chev">{open ? "▾" : "▸"}</span> : null}
       </div>
       {open && it.text ? <pre className="think-full">{it.text}</pre> : null}
+    </div>
+  );
+}
+
+// —— 内嵌终端面板（VS Code/ZCode 式：底部抽屉，多 tab，node-pty + xterm.js）——
+interface TermTab {
+  id: number; // pty 会话 id（=tab id）
+  title: string;
+  cwd: string;
+}
+
+function TerminalPanel({ onClose }: { onClose: () => void }) {
+  const [tabs, setTabs] = useState<TermTab[]>([]);
+  const [active, setActive] = useState<number | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  // xterm 实例与 fit 插件都存 ref（不进 state：命令式对象，重渲染无关）
+  const termsRef = useRef<Map<number, { term: Terminal; fit: FitAddon }>>(new Map());
+  const activeRef = useRef<number | null>(null);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
+  // 全局事件接线只挂一次：data/exit 按 id 路由到对应 xterm
+  useEffect(() => {
+    window.myharness?.termOnData?.((id, data) => {
+      termsRef.current.get(id)?.term.write(data);
+    });
+    window.myharness?.termOnExit?.((id) => {
+      termsRef.current.get(id)?.term.dispose();
+      termsRef.current.delete(id);
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== id);
+        setActive((a) => (a === id ? next[next.length - 1]?.id ?? null : a));
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openTerminal = async () => {
+    const host = hostRef.current;
+    if (!host || !window.myharness?.termCreate) return;
+    // 面板刚挂载时尺寸可能是 0：先给占位行列，挂上后 fit 校正
+    const { id, cwd, title } = await window.myharness.termCreate(80, 24);
+    const term = new Terminal({
+      fontFamily: "Consolas, 'Cascadia Mono', monospace",
+      fontSize: 12.5,
+      cursorBlink: true,
+      convertEol: false,
+      theme: {
+        background: "#111318",
+        foreground: "#d7dae0",
+        cursor: "#79c0ff",
+        selectionBackground: "#264f78",
+      },
+      scrollback: 5000,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.onData((d) => window.myharness?.termInput?.(id, d));
+    term.onResize(({ cols, rows }) => window.myharness?.termResize?.(id, cols, rows));
+    termsRef.current.set(id, { term, fit });
+    setTabs((prev) => [...prev, { id, title, cwd }]);
+    setActive(id);
+  };
+
+  // 激活 tab：把 xterm DOM 挂到 host 并 fit
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || active == null) return;
+    const entry = termsRef.current.get(active);
+    if (!entry) return;
+    if (entry.term.element?.parentElement !== host) {
+      host.innerHTML = "";
+      entry.term.open(host);
+    }
+    try {
+      entry.fit.fit();
+      entry.term.focus();
+    } catch {}
+  }, [active, tabs.length]);
+
+  // 面板尺寸变化（拖动/开合）时重算行列
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || active == null) return;
+    const ro = new ResizeObserver(() => {
+      const entry = termsRef.current.get(activeRef.current ?? -1);
+      if (!entry) return;
+      try {
+        entry.fit.fit();
+      } catch {}
+    });
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [active == null]);
+
+  const closeTab = (id: number) => {
+    window.myharness?.termKill?.(id);
+    // 进程退出事件会做实际清理；双保险直接摘
+    termsRef.current.get(id)?.term.dispose();
+    termsRef.current.delete(id);
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      setActive((a) => (a === id ? next[next.length - 1]?.id ?? null : a));
+      return next;
+    });
+  };
+
+  return (
+    <div className="term-panel">
+      <div className="term-head">
+        <span className="term-label">
+          <Icon name="terminal" size={12} /> 终端
+        </span>
+        {tabs.map((t) => (
+          <div key={t.id} className={"term-tab" + (t.id === active ? " on" : "")} onClick={() => setActive(t.id)}>
+            <span title={t.cwd}>{t.title}</span>
+            <button className="term-x" title="关闭" onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}>×</button>
+          </div>
+        ))}
+        <button className="term-new" title="新建终端" onClick={openTerminal}>＋</button>
+        <div style={{ flex: 1 }} />
+        <button className="term-x" title="收起终端" onClick={onClose}>×</button>
+      </div>
+      <div ref={hostRef} className="term-host" onClick={() => termsRef.current.get(active ?? -1)?.term.focus()} />
+      {tabs.length === 0 && (
+        <div className="term-empty">
+          <button className="primary" onClick={openTerminal}>打开终端（{window.myharness ? "PowerShell，工作区=当前项目" : "仅桌面端可用"}）</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -299,6 +439,22 @@ function fmtTok(n: number): string {
 }
 function fmtCost(c: number | null | undefined): string | null {
   return c == null ? null : c < 0.0001 && c > 0 ? "<$0.0001" : `$${c.toFixed(4)}`;
+}
+// 运行时长：>60s 转为 X m X s（秒表式，避免 771.6s 这种难读的数字）
+function fmtClock(sec: number): string {
+  const s = Math.floor(sec);
+  if (s < 60) return `${sec < 10 ? sec.toFixed(1) : s}s`;
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
+// 中文场景：>60s 转为 X 分 X 秒
+function fmtClockCn(sec: number): string {
+  const s = Math.floor(sec);
+  if (s < 60) return `${s} 秒`;
+  return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+// token 数中文万格式：33300 -> 3.3万
+function fmtWan(n: number): string {
+  return n >= 10000 ? `${(n / 10000).toFixed(1)}万` : String(n);
 }
 
 // 工具调用 → ZCode 式活动行动词/目标/新增行数（+N 徽标）
@@ -459,6 +615,7 @@ function App() {
   const [reason, setReason] = useState(""); // 当前轮推理增量（保留末 400 字符，ZCode 式正在思考）
   const [reasonFull, setReasonFull] = useState(""); // 本轮完整推理全文：思考区实时流式显示（ZCode 式）
   const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
+  const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（底部抽屉）
   const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
   const [outlineTip, setOutlineTip] = useState<{ text: string; top: number } | null>(null); // 左侧消息导航悬浮预览
   const [copiedId, setCopiedId] = useState<number | null>(null); // 刚复制完的消息 id（图标短暂变 ✓）
@@ -469,6 +626,9 @@ function App() {
   const [testState, setTestState] = useState<TestState | null>(null); // TestModel 结果
   const [sessCost, setSessCost] = useState<SessionCostData | null>(null); // 当前会话累计（落库部分，RunFinished 后刷新）
   const [runUsage, setRunUsage] = useState<{ input_tokens: number; output_tokens: number } | null>(null); // 进行中 run 的实时累计
+  const [ctxInfo, setCtxInfo] = useState<{ tokens: number; window: number; static: number } | null>(null); // 当前上下文规模（容量弹窗）
+  const [ctxOpen, setCtxOpen] = useState(false); // 上下文容量弹窗
+  const ctxPopRef = useRef<HTMLDivElement | null>(null);
   const [stats, setStats] = useState<StatsState | null>(null); // GetStats 结果（设置页「常规」）
   const [memory, setMemory] = useState<{ blocks: MemBlock[]; files: MemFile[] }>({ blocks: [], files: [] });
   const [memFile, setMemFile] = useState<{ path: string; content: string } | null>(null);
@@ -545,6 +705,16 @@ function App() {
     });
   };
 
+  // 上下文弹窗：点击外面关闭
+  useEffect(() => {
+    if (!ctxOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (ctxPopRef.current && !ctxPopRef.current.contains(e.target as Node)) setCtxOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [ctxOpen]);
+
   // 运行中的计时器
   useEffect(() => {
     if (!running) return;
@@ -606,6 +776,8 @@ function App() {
           setRunning(false);
           setSessCost(null);
           setRunUsage(null);
+          setCtxInfo(null); // 上下文规模属于会话，切走即清
+          setCtxOpen(false);
           // 新会话没有 History 事件回放，必须主动清场，否则正文/排队消息还挂在旧会话上
           setItems([]);
           setQueue([]);
@@ -622,6 +794,8 @@ function App() {
           setRunning(false);
           setSessCost(null);
           setRunUsage(null);
+          setCtxInfo(null);
+          setCtxOpen(false);
           setQueue([]); // 排队消息属于旧会话，切走后不再回放
           sendCmd({ type: "GetSessionCost", session_id: e.session_id });
           // 分支/恢复会话后刷侧栏：fork 出的新会话立即可见，不用等首轮跑完
@@ -733,9 +907,11 @@ function App() {
           sendCmd({ type: "ListSessions" });
           break;
         case "Usage":
-          // 每轮模型返回后的本 run 累计 token：顶栏会话用量实时跳动
-          if (!e.session_id || e.session_id === sessionIdRef.current)
+          // 每轮模型返回后的本 run 累计 token：顶栏会话用量实时跳动；上下文规模供容量弹窗
+          if (!e.session_id || e.session_id === sessionIdRef.current) {
             setRunUsage({ input_tokens: e.input_tokens, output_tokens: e.output_tokens });
+            if (e.context_window) setCtxInfo({ tokens: e.context_tokens || 0, window: e.context_window, static: e.static_tokens || 0 });
+          }
           break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
@@ -1839,7 +2015,7 @@ function App() {
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
           <span className="meta">
             {conn} · {shortModel(currentModel)}
-            {running ? ` · ⏱ ${elapsed.toFixed(1)}s` : ""}
+            {running ? ` · ⏱ ${fmtClock(elapsed)}` : ""}
             {sessCost || runUsage
               ? ` · 会话 ↑${fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓${fmtTok(
                   (sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0)
@@ -1847,7 +2023,47 @@ function App() {
               : ""}
             {sessCost?.cost_usd != null ? ` · ${fmtCost(sessCost.cost_usd)}` : ""}
           </span>
+          {ctxInfo && ctxInfo.window > 0 && ctxInfo.tokens > 0 && (
+            <button className={"ctx-chip" + (ctxOpen ? " on" : "")} title="上下文容量" onClick={() => setCtxOpen((o) => !o)}>
+              上下文 {Math.min(999, Math.round((ctxInfo.tokens / ctxInfo.window) * 100))}%
+            </button>
+          )}
+          <button
+            className={"term-toggle" + (termOpen ? " on" : "")}
+            title={termOpen ? "收起终端" : "打开终端"}
+            onClick={() => setTermOpen((o) => !o)}
+          >
+            <Icon name="terminal" size={14} />
+          </button>
         </header>
+        {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
+          <div className="ctx-pop" ref={ctxPopRef}>
+            {(() => {
+              const pct = Math.min(100, (ctxInfo.tokens / ctxInfo.window) * 100);
+              const statPct = Math.min(100, (ctxInfo.static / ctxInfo.window) * 100);
+              const msgTok = Math.max(0, ctxInfo.tokens - ctxInfo.static);
+              const msgPct = Math.min(100, (msgTok / ctxInfo.window) * 100);
+              const barColor = pct >= 85 ? "#f85149" : pct >= 70 ? "#e3b341" : "#4493f8";
+              return (
+                <>
+                  <div className="ctx-head">
+                    <span>上下文容量</span>
+                    <span className="ctx-nums">
+                      {fmtWan(ctxInfo.tokens)} / {fmtWan(ctxInfo.window)}（{pct.toFixed(1)}%）
+                    </span>
+                  </div>
+                  <div className="ctx-bar">
+                    <div className="ctx-fill" style={{ width: `${pct}%`, background: barColor }} />
+                  </div>
+                  <div className="ctx-row"><span><i className="cdot" style={{ background: barColor }} />对话消息</span><b>{msgPct.toFixed(1)}%</b></div>
+                  <div className="ctx-row"><span><i className="cdot" style={{ background: "#8b949e" }} />系统提示词与工具</span><b>{statPct.toFixed(1)}%</b></div>
+                  <div className="ctx-row"><span><i className="cdot" style={{ background: "#30363d" }} />剩余余量</span><b>{(100 - pct).toFixed(1)}%</b></div>
+                  <div className="ctx-note">对话消息按模型返回的 input tokens 计，静态部分为字符估算，供参考；超 85% 触发自动压缩。</div>
+                </>
+              );
+            })()}
+          </div>
+        )}
         {outlineItems.length > 1 && (
           <div className="outline-nav">
             {outlineItems.map((it) => (
@@ -1920,7 +2136,7 @@ function App() {
                           : it.status === "stopped"
                             ? "已停止"
                             : "执行失败"}
-                    {secs != null ? ` ${secs}s` : ""}
+                    {secs != null ? ` ${fmtClock(secs)}` : ""}
                   </span>
                   {live && outLine ? (
                     <div className="tout" title={it.output}>
@@ -1995,7 +2211,7 @@ function App() {
             <div className="working">
               <div className="working-head">
                 <span className="spin" />
-                {reasonFull ? `思考中 · ${elapsed.toFixed(0)} 秒` : `工作中 ${elapsed.toFixed(0)} 秒`}
+                {reasonFull ? `思考中 · ${fmtClockCn(elapsed)}` : `工作中 ${fmtClockCn(elapsed)}`}
               </div>
               {reasonFull ? (
                 // ZCode 式实时思考区：推理全文流式滚动，本轮结束后落成可展开的「思考」折叠条
@@ -2039,6 +2255,7 @@ function App() {
             </button>
           </div>
         ))}
+        {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
         <div className="composer">
           {pasteImages.length > 0 && (
             <div className="atchips">
@@ -2127,16 +2344,14 @@ function App() {
               )}
             </div>
             <div style={{ flex: 1 }} />
-            <select
-              className="ctl"
-              value={thinking}
-              title="思考档位"
-              onChange={(e) => setThink(e.target.value as ThinkLevel)}
-            >
-              {Object.entries(THINKING_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>思考: {v}</option>
-              ))}
-            </select>
+            <div className="think-select" title="思考档位">
+              <Icon name="brain" size={13} />
+              <select className="ctl" value={thinking} onChange={(e) => setThink(e.target.value as ThinkLevel)}>
+                {Object.entries(THINKING_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>思考: {v}</option>
+                ))}
+              </select>
+            </div>
             <select
               className="ctl model"
               value={settings.model}
@@ -2151,7 +2366,7 @@ function App() {
               }}
             >
               {(settings.models?.length ? settings.models.map((m) => m.model) : [settings.model]).map((m) => (
-                <option key={m} value={m}>{shortModel(m)}{m === settings.model ? " ✓" : ""}</option>
+                <option key={m} value={m}>{shortModel(m)}</option>
               ))}
               <option value="__manage__">⚙ 管理模型…</option>
             </select>

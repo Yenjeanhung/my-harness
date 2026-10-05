@@ -28,6 +28,7 @@ var import_child_process = require("child_process");
 var import_http = __toESM(require("http"));
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
+var nodePty = __toESM(require("@lydell/node-pty"));
 var PORT = process.env.MYHARNESS_PORT || "8765";
 var HTTP_BASE = `http://127.0.0.1:${PORT}`;
 var WS_URL = `ws://127.0.0.1:${PORT}/ws`;
@@ -157,6 +158,51 @@ async function ensureServer(workspace) {
   }
   return "unavailable";
 }
+var ptys = /* @__PURE__ */ new Map();
+var ptySeq = 1;
+var terminalWorkspace = null;
+function currentWorkspace() {
+  return terminalWorkspace || loadProjects().current || import_electron.app.getPath("home");
+}
+import_electron.ipcMain.handle("term-create", (_e, cols, rows) => {
+  const id = ptySeq++;
+  const cwd = currentWorkspace();
+  const shell = process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
+  const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
+  const pty = nodePty.spawn(shell, shellArgs, {
+    name: "xterm-256color",
+    cols: Math.max(20, Math.min(cols || 80, 500)),
+    rows: Math.max(5, Math.min(rows || 24, 200)),
+    cwd,
+    env: process.env
+  });
+  ptys.set(id, pty);
+  pty.onData((d) => win?.webContents.send("term-data", id, d));
+  pty.onExit(({ exitCode }) => {
+    ptys.delete(id);
+    win?.webContents.send("term-exit", id, exitCode);
+  });
+  return { id, cwd, title: import_path.default.basename(cwd) || "\u7EC8\u7AEF" };
+});
+import_electron.ipcMain.on("term-input", (_e, id, data) => {
+  ptys.get(id)?.write(data);
+});
+import_electron.ipcMain.on("term-resize", (_e, id, cols, rows) => {
+  try {
+    ptys.get(id)?.resize(Math.max(10, cols), Math.max(4, rows));
+  } catch {
+  }
+});
+import_electron.ipcMain.on("term-kill", (_e, id) => {
+  const p = ptys.get(id);
+  if (p) {
+    try {
+      p.kill();
+    } catch {
+    }
+    ptys.delete(id);
+  }
+});
 import_electron.app.whenReady().then(async () => {
   import_electron.Menu.setApplicationMenu(null);
   import_electron.ipcMain.handle("pick-folder", async () => {
@@ -176,6 +222,7 @@ import_electron.app.whenReady().then(async () => {
       st.current = p;
       st.recent = [p, ...st.recent.filter((x) => x !== p)].slice(0, 8);
       saveProjects(st);
+      terminalWorkspace = p;
     }
     const state = same && await serverMatches(p) ? "attached" : await restartServerWithWorkspace(p);
     try {
@@ -187,6 +234,7 @@ import_electron.app.whenReady().then(async () => {
     return state;
   });
   const projects = loadProjects();
+  terminalWorkspace = projects.current;
   let serverState;
   if (projects.current) {
     serverState = await serverMatches(projects.current) ? "attached" : await restartServerWithWorkspace(projects.current);
@@ -216,6 +264,13 @@ import_electron.app.whenReady().then(async () => {
   });
 });
 import_electron.app.on("window-all-closed", () => {
+  for (const p of ptys.values()) {
+    try {
+      p.kill();
+    } catch {
+    }
+  }
+  ptys.clear();
   if (sidecar) sidecar.kill();
   import_electron.app.quit();
 });

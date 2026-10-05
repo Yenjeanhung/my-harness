@@ -584,3 +584,7 @@ def test_ws_usage_streamed(tmp_path):
                 break
         assert usages and usages[-1]["input_tokens"] == 10 and usages[-1]["output_tokens"] == 5
         assert usages[-1]["session_id"] == sid
+        # 上下文容量三件套：当前规模（最后一轮 input tokens）/ 窗口上限 / 静态前缀估算
+        assert usages[-1]["context_tokens"] == 10
+        assert usages[-1]["context_window"] > 0
+        assert usages[-1]["static_tokens"] > 0

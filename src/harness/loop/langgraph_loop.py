@@ -100,16 +100,15 @@ class LangGraphLoop:
             **chat_kwargs,
         )
         budget.usage.add(result.usage)
-        cb_usage = self._cbs.get("on_usage")
-        if cb_usage:
-            cb_usage(budget.usage)  # 每轮模型返回后推送累计用量，UI 实时显示
         if self.context_engine:
             s["last_input"] = (
                 result.usage.input_tokens
                 if result.usage and result.usage.input_tokens
                 else self.context_engine.estimate(session.messages())
             )
-
+        cb_usage = self._cbs.get("on_usage")
+        if cb_usage:
+            cb_usage(budget.usage, s["last_input"])  # 每轮推送：累计用量 + 当前上下文规模
         if result.tool_uses:
             blocks: list = [TextBlock(text=result.text)] if result.text else []
             blocks.extend(result.tool_uses)
@@ -204,7 +203,7 @@ class LangGraphLoop:
         on_reason: DeltaCallback | None = None,
         on_tool_args: ToolArgsCallback | None = None,
         on_tool_output: ToolOutputCallback | None = None,
-        on_usage: Callable[[Usage], None] | None = None,
+        on_usage: Callable[[Usage, int], None] | None = None,  # (累计用量, 当前上下文规模)
     ) -> str:
         budget = budget or Budget()
         self.current_budget = budget

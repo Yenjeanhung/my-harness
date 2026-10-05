@@ -295,7 +295,13 @@ function TerminalPanel({ onClose }: { onClose: () => void }) {
     const host = hostRef.current;
     if (!host || !window.myharness?.termCreate) return;
     // 面板刚挂载时尺寸可能是 0：先给占位行列，挂上后 fit 校正
-    const { id, cwd, title } = await window.myharness.termCreate(80, 24);
+    const res = await window.myharness.termCreate(80, 24);
+    if (res.error) {
+      alert(`终端打开失败：${res.error}`);
+      onClose();
+      return;
+    }
+    const { id, cwd, title } = res;
     const term = new Terminal({
       fontFamily: "Consolas, 'Cascadia Mono', monospace",
       fontSize: 12.5,
@@ -349,6 +355,30 @@ function TerminalPanel({ onClose }: { onClose: () => void }) {
     return () => ro.disconnect();
   }, [active == null]);
 
+  // 面板高度拖拽：顶缘把手上下拉，双击复位
+  const [termHeight, setTermHeight] = useState(300);
+  const termDrag = useRef<{ startY: number; startH: number } | null>(null);
+  const onTermDragStart = (e: React.MouseEvent) => {
+    termDrag.current = { startY: e.clientY, startH: termHeight };
+    e.preventDefault();
+  };
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!termDrag.current) return;
+      const dy = termDrag.current.startY - e.clientY;
+      setTermHeight(Math.max(140, Math.min(window.innerHeight * 0.7, termDrag.current.startH + dy)));
+    };
+    const onUp = () => {
+      termDrag.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [termHeight]);
+
   const closeTab = (id: number) => {
     window.myharness?.termKill?.(id);
     // 进程退出事件会做实际清理；双保险直接摘
@@ -362,7 +392,13 @@ function TerminalPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="term-panel">
+    <div className="term-panel" style={{ height: termHeight }}>
+      <div
+        className="term-resize"
+        title="拖拽调整高度 · 双击复位"
+        onMouseDown={onTermDragStart}
+        onDoubleClick={() => setTermHeight(300)}
+      />
       <div className="term-head">
         <span className="term-label">
           <Icon name="terminal" size={12} /> 终端
@@ -768,6 +804,7 @@ function App() {
       switch (e.type) {
         case "SessionCreated":
           setSessionId(e.session_id);
+          sessionIdRef.current = e.session_id; // 同步 ref：紧随其后的事件（ContextInfo/SessionCost）按会话过滤时不能读到旧值
           setPermMode(e.mode || "default");
           setPermission(null); // 换会话不带审批卡片
           setAttachments([]);
@@ -787,6 +824,7 @@ function App() {
           break;
         case "SessionResumed":
           setSessionId(e.session_id);
+          sessionIdRef.current = e.session_id; // 同步 ref，理由同 SessionCreated
           setPermission(null);
           setAttachments([]);
           setPasteImages([]);
@@ -907,11 +945,16 @@ function App() {
           sendCmd({ type: "ListSessions" });
           break;
         case "Usage":
-          // 每轮模型返回后的本 run 累计 token：顶栏会话用量实时跳动；上下文规模供容量弹窗
+          // 每轮模型返回后的本 run 累计 token：顶栏会话用量实时跳动；上下文规模供容量圆环
           if (!e.session_id || e.session_id === sessionIdRef.current) {
             setRunUsage({ input_tokens: e.input_tokens, output_tokens: e.output_tokens });
             if (e.context_window) setCtxInfo({ tokens: e.context_tokens || 0, window: e.context_window, static: e.static_tokens || 0 });
           }
+          break;
+        case "ContextInfo":
+          // 恢复会话时的上下文快照：容量圆环一进来就显示，不用等首轮
+          if (!e.session_id || e.session_id === sessionIdRef.current)
+            setCtxInfo({ tokens: e.context_tokens, window: e.context_window, static: e.static_tokens });
           break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
@@ -2023,11 +2066,25 @@ function App() {
               : ""}
             {sessCost?.cost_usd != null ? ` · ${fmtCost(sessCost.cost_usd)}` : ""}
           </span>
-          {ctxInfo && ctxInfo.window > 0 && ctxInfo.tokens > 0 && (
-            <button className={"ctx-chip" + (ctxOpen ? " on" : "")} title="上下文容量" onClick={() => setCtxOpen((o) => !o)}>
-              上下文 {Math.min(999, Math.round((ctxInfo.tokens / ctxInfo.window) * 100))}%
-            </button>
-          )}
+          {(() => {
+            if (!ctxInfo || ctxInfo.window <= 0 || ctxInfo.tokens <= 0) return null;
+            const pct = Math.min(100, (ctxInfo.tokens / ctxInfo.window) * 100);
+            const color = pct >= 85 ? "#f85149" : pct >= 70 ? "#e3b341" : "#4493f8";
+            const r = 6, c = 2 * Math.PI * r;
+            return (
+              <button className={"ctx-chip" + (ctxOpen ? " on" : "")} title="上下文容量" onClick={() => setCtxOpen((o) => !o)}>
+                <svg width="16" height="16" viewBox="0 0 16 16" style={{ display: "block" }}>
+                  <circle cx="8" cy="8" r={r} fill="none" stroke="#30363d" strokeWidth="2.5" />
+                  <circle
+                    cx="8" cy="8" r={r} fill="none" stroke={color} strokeWidth="2.5"
+                    strokeDasharray={`${(pct / 100) * c} ${c}`} strokeLinecap="round"
+                    transform="rotate(-90 8 8)"
+                  />
+                </svg>
+                {Math.round(pct)}%
+              </button>
+            );
+          })()}
           <button
             className={"term-toggle" + (termOpen ? " on" : "")}
             title={termOpen ? "收起终端" : "打开终端"}
@@ -2348,7 +2405,7 @@ function App() {
               <Icon name="brain" size={13} />
               <select className="ctl" value={thinking} onChange={(e) => setThink(e.target.value as ThinkLevel)}>
                 {Object.entries(THINKING_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>思考: {v}</option>
+                  <option key={k} value={k}>{v}</option>
                 ))}
               </select>
             </div>

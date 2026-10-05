@@ -433,6 +433,7 @@ def test_ws_fork_session(tmp_path):
         assert ws.receive_json()["type"] == "SessionResumed"
         hist = ws.receive_json()
         assert hist["type"] == "History"
+        assert ws.receive_json()["type"] == "ContextInfo"  # 恢复末尾附一条上下文快照
         first_user = next(i for i in hist["items"] if i["kind"] == "user")
         assert isinstance(first_user["seq"], int)
 
@@ -454,6 +455,8 @@ def test_ws_fork_session(tmp_path):
         # 分支会话不复制 run_finished：成本/统计不重复计数
         ws.send_json({"type": "GetSessionCost", "session_id": fork_row["session_id"]})
         c = ws.receive_json()
+        while c["type"] == "ContextInfo":  # 恢复会话末尾附带的上下文快照，与成本无关
+            c = ws.receive_json()
         assert c["type"] == "SessionCost" and c["turns"] == 0
 
 

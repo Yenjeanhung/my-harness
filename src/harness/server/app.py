@@ -396,9 +396,28 @@ class ServerState:
         if sid in self.sessions:
             self._notify({"type": "SessionResumed", "session_id": sid, "mode": self.sessions[sid][1].permissions.mode})
             self._notify(self._history_payload(self.sessions[sid][0]))
+            self._context_snapshot(sid)
             return
         await self._register_session(Session(self.store, sid), created=False)
         self._notify(self._history_payload(self.sessions[sid][0]))
+        self._context_snapshot(sid)
+
+    def _context_snapshot(self, sid: str) -> None:
+        """恢复会话时推一次上下文规模快照（字符估算），UI 的容量圆环不必等首轮跑完。"""
+        pair = self.sessions.get(sid)
+        if not pair:
+            return
+        loop = pair[1]
+        used = loop.context_engine.estimate(pair[0].messages()) if loop.context_engine else 0
+        self._notify(
+            {
+                "type": "ContextInfo",
+                "session_id": sid,
+                "context_tokens": used,
+                "context_window": self.cfg.context_window,
+                "static_tokens": self.static_tokens.get(sid, 0),
+            }
+        )
 
     def _history_payload(self, sess: Session) -> dict[str, Any]:
         """把会话的事件流回放为界面可渲染的历史条目（打开应用即恢复上次对话）。

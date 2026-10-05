@@ -86,7 +86,8 @@
 | `ToolCallArgs` | `session_id`, `call_id`, `tool`, `args_text` | 工具调用参数仍在生成时的流式预览（累积原始 JSON 文本）；客户端可提前画出工具卡片，`ToolCallStarted` 随后带最终 `args` |
 | `ToolCallStarted` / `ToolCallResult` | `tool`, `args`, `call_id?` / `tool`, `is_error`, `chars`, `call_id?` | 工具卡片；`call_id` 与 `ToolCallArgs`/`ToolCallOutput` 关联同一张卡片 |
 | `ToolCallOutput` | `session_id`, `call_id`, `tool`, `text` | 工具执行期过程输出增量（bash 逐行 stdout），客户端在卡片内实时滚动；可忽略 |
-| `Usage` | `session_id`, `input_tokens`, `output_tokens` | 每轮模型返回后推送的本 run 累计 token（含子代理），客户端实时显示会话用量；可忽略 |
+| `Usage` | `session_id`, `input_tokens`, `output_tokens`, `context_tokens?`, `context_window?`, `static_tokens?` | 每轮模型返回后推送的本 run 累计 token（含子代理）与当前上下文规模；可忽略 |
+| `ContextInfo` | `session_id`, `context_tokens`, `context_window`, `static_tokens` | 恢复会话时的上下文规模快照（字符估算），客户端显示容量指示；可忽略 |
 | `RunFinished` | `answer`, `duration_ms`, `usage{input_tokens,output_tokens}`, `cost_usd`(价格未知为 null), `last_seq`(本轮最后一条消息的 seq，会话为空为 null) | 一轮结束，带用量与近似费用；前端据 `last_seq` 让新消息立刻可分支 |
 | `PermissionRequest` | `request_id`, `tool`, `reason` | 需要审批；用 `RespondPermission` 应答 |
 | `Notice` | `text`, `session_id?` | 非致命通知（取消/导出/权限切换等） |

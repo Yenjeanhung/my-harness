@@ -154,6 +154,13 @@ export type WsEvent =
       context_window?: number; // 上下文窗口上限
       static_tokens?: number; // 静态前缀估算（系统提示词+工具 schema）
     }
+  | {
+      type: "ContextInfo";
+      session_id?: string;
+      context_tokens: number;
+      context_window: number;
+      static_tokens: number;
+    }
   | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)
@@ -221,7 +228,7 @@ declare global {
       getProjects(): Promise<{ current: string | null; recent: string[] }>;
       openProject(p: string): Promise<string>;
       // —— 内嵌终端（node-pty 会话，渲染端 xterm.js 交互）——
-      termCreate(cols: number, rows: number): Promise<{ id: number; cwd: string; title: string }>;
+      termCreate(cols: number, rows: number): Promise<{ id: number; cwd: string; title: string; error?: string }>;
       termInput(id: number, data: string): void;
       termResize(id: number, cols: number, rows: number): void;
       termKill(id: number): void;

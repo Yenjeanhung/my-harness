@@ -28,7 +28,6 @@ var import_child_process = require("child_process");
 var import_http = __toESM(require("http"));
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var nodePty = __toESM(require("@lydell/node-pty"));
 var PORT = process.env.MYHARNESS_PORT || "8765";
 var HTTP_BASE = `http://127.0.0.1:${PORT}`;
 var WS_URL = `ws://127.0.0.1:${PORT}/ws`;
@@ -164,18 +163,29 @@ var terminalWorkspace = null;
 function currentWorkspace() {
   return terminalWorkspace || loadProjects().current || import_electron.app.getPath("home");
 }
-import_electron.ipcMain.handle("term-create", (_e, cols, rows) => {
+import_electron.ipcMain.handle("term-create", async (_e, cols, rows) => {
+  let nodePty;
+  try {
+    nodePty = await import("@lydell/node-pty");
+  } catch (err) {
+    return { error: `\u7EC8\u7AEF\u6A21\u5757\u52A0\u8F7D\u5931\u8D25: ${err instanceof Error ? err.message : String(err)}` };
+  }
   const id = ptySeq++;
   const cwd = currentWorkspace();
   const shell = process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
   const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
-  const pty = nodePty.spawn(shell, shellArgs, {
-    name: "xterm-256color",
-    cols: Math.max(20, Math.min(cols || 80, 500)),
-    rows: Math.max(5, Math.min(rows || 24, 200)),
-    cwd,
-    env: process.env
-  });
+  let pty;
+  try {
+    pty = nodePty.spawn(shell, shellArgs, {
+      name: "xterm-256color",
+      cols: Math.max(20, Math.min(cols || 80, 500)),
+      rows: Math.max(5, Math.min(rows || 24, 200)),
+      cwd,
+      env: process.env
+    });
+  } catch (err) {
+    return { error: `\u7EC8\u7AEF\u542F\u52A8\u5931\u8D25: ${err instanceof Error ? err.message : String(err)}` };
+  }
   ptys.set(id, pty);
   pty.onData((d) => win?.webContents.send("term-data", id, d));
   pty.onExit(({ exitCode }) => {

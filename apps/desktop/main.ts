@@ -7,7 +7,6 @@ import type { ChildProcess } from "child_process";
 import http from "http";
 import fs from "fs";
 import path from "path";
-import * as nodePty from "@lydell/node-pty";
 import type { IPty } from "@lydell/node-pty";
 
 const PORT = process.env.MYHARNESS_PORT || "8765";
@@ -174,19 +173,31 @@ function currentWorkspace(): string {
   return terminalWorkspace || loadProjects().current || app.getPath("home");
 }
 
-ipcMain.handle("term-create", (_e, cols: number, rows: number) => {
+ipcMain.handle("term-create", async (_e, cols: number, rows: number) => {
+  // 延迟加载原生模块：缺失/损坏时只让终端报错，不拖垮整个应用
+  let nodePty: typeof import("@lydell/node-pty");
+  try {
+    nodePty = await import("@lydell/node-pty");
+  } catch (err) {
+    return { error: `终端模块加载失败: ${err instanceof Error ? err.message : String(err)}` };
+  }
   const id = ptySeq++;
   const cwd = currentWorkspace();
   const shell =
     process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
   const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
-  const pty = nodePty.spawn(shell, shellArgs, {
-    name: "xterm-256color",
-    cols: Math.max(20, Math.min(cols || 80, 500)),
-    rows: Math.max(5, Math.min(rows || 24, 200)),
-    cwd,
-    env: process.env as Record<string, string>,
-  });
+  let pty: IPty;
+  try {
+    pty = nodePty.spawn(shell, shellArgs, {
+      name: "xterm-256color",
+      cols: Math.max(20, Math.min(cols || 80, 500)),
+      rows: Math.max(5, Math.min(rows || 24, 200)),
+      cwd,
+      env: process.env as Record<string, string>,
+    });
+  } catch (err) {
+    return { error: `终端启动失败: ${err instanceof Error ? err.message : String(err)}` };
+  }
   ptys.set(id, pty);
   pty.onData((d) => win?.webContents.send("term-data", id, d));
   pty.onExit(({ exitCode }) => {

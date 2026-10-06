@@ -28,10 +28,34 @@
       aside {
         width: 272px; min-width: 272px; max-width: 272px;
         border-right: 1px solid #262a33; background: #0f1218;
-        display: flex; flex-direction: column; overflow-y: auto;
+        display: flex; flex-direction: column; overflow: hidden;
       }
+      /* 模式内容区：自己滚动，底部按钮/用户栏固定在文档流里不再悬浮重叠 */
+      .aside-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+      .aside-body > .ft { flex: 1; min-height: 0; }
       aside h3 { font-size: 11.5px; color: #7d8590; margin: 16px 14px 6px; text-transform: uppercase; letter-spacing: .06em; }
       aside .newbtn { margin: 12px 14px 4px; width: calc(100% - 28px); }
+      /* 会话模式标题行：标题 + 时间/分组切换 + 项目入口 */
+      .side-head { display: flex; align-items: center; gap: 8px; margin: 16px 14px 0; }
+      .side-head h3 { margin: 0; flex: 1; }
+      .side-head .seg { margin: 0; }
+      .side-head .seg button { padding: 2px 8px; font-size: 11px; }
+      .side-ic {
+        flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+        background: none; border: 1px solid transparent; border-radius: 6px; color: #7d8590; cursor: pointer; padding: 0;
+      }
+      .side-ic:hover { color: #d7dae0; background: #1c2230; }
+      .side-ic.on { color: #79c0ff; border-color: #30363d; background: #161b22; }
+      /* 代码面板顶部的当前项目栏：点击选目录 */
+      .proj-bar {
+        flex: none; display: flex; align-items: center; gap: 6px;
+        margin: 10px 14px 0; padding: 6px 9px;
+        border: 1px solid #30363d; border-radius: 6px; cursor: pointer;
+        font-size: 12px; color: #d7dae0;
+      }
+      .proj-bar:hover { border-color: #4493f8; background: #161b22; }
+      .proj-bar-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .proj-bar-act { flex: none; color: #79c0ff; font-size: 11px; }
       aside .search {
         margin: 8px 14px 0; width: calc(100% - 28px);
         background: #0d1017; color: #d7dae0; border: 1px solid #30363d;
@@ -225,20 +249,20 @@
       .diff-same, .diff-loading { padding: 24px; color: #6e7681; font-size: 12.5px; text-align: center; }
 
       /* —— 文件树（资源管理器）—— */
-      .ft { display: flex; flex-direction: row; min-height: 0; flex: 1; }
-      /* VSCode 式活动栏：左侧竖排视图切换 */
-      .ft-act {
+      .ft { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+      /* VSCode 式常驻活动栏：app 级竖条，收起侧栏后仍在原位 */
+      .actbar {
         flex: none; width: 42px; display: flex; flex-direction: column; align-items: center;
-        gap: 2px; padding: 6px 0; border-right: 1px solid #1c2128;
+        gap: 2px; padding: 6px 0; border-right: 1px solid #1c2128; background: #0f1218;
       }
-      .ft-act button {
+      .actbar button {
         width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
         background: none; border: none; border-radius: 6px; color: #7d8590; cursor: pointer;
         position: relative; padding: 0;
       }
-      .ft-act button:hover { color: #d7dae0; background: #1c2230; }
-      .ft-act button.on { color: #fff; }
-      .ft-act button.on::before {
+      .actbar button:hover { color: #d7dae0; background: #1c2230; }
+      .actbar button.on { color: #fff; }
+      .actbar button.on::before {
         content: ""; position: absolute; left: -4px; top: 7px; bottom: 7px;
         width: 2px; background: #4493f8; border-radius: 1px;
       }
@@ -248,9 +272,17 @@
         line-height: 14px; text-align: center; font-weight: 600; padding: 0 3px;
       }
       .act-spacer { flex: 1; }
-      .ft-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
       .ft-toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; }
       .ft-toolbar .seg.mini button { padding: 2px 10px; font-size: 11.5px; }
+      /* 资源管理器标题栏：左标题 + 右侧常驻操作（新建文件/文件夹、刷新、折叠、收起） */
+      .ft-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        padding: 4px 8px 4px 12px; flex: none; min-height: 26px;
+        letter-spacing: .05em;
+      }
+      .ft-head-title { font-size: 11px; color: #9aa4b2; text-transform: uppercase; user-select: none; }
+      .ft-head-acts { display: inline-flex; align-items: center; gap: 1px; }
+      .ft-head-acts .ft-b { padding: 2px 4px; }
       .ft-tree { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 10px; }
       .ft-row {
         display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: pointer;
@@ -283,6 +315,10 @@
       }
       .ft-search input:focus { border-color: #1f6feb; }
       .ft-smeta { color: #6e7681; font-size: 11px; padding: 0 10px 6px; }
+      .ft-ghead {
+        color: #7d8590; font-size: 11px; padding: 6px 10px 2px;
+        text-transform: uppercase; letter-spacing: .05em;
+      }
       .ft-spath {
         display: flex; align-items: center; gap: 5px; padding: 4px 10px; color: #79c0ff;
         font-size: 12px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -368,6 +404,14 @@
         padding: 6px 8px; font-size: 12px; resize: vertical; font-family: inherit;
       }
       .git-msg:focus { outline: none; border-color: #4493f8; }
+      .git-msg-row { display: flex; gap: 6px; align-items: stretch; }
+      .git-msg-row .git-msg { flex: 1; }
+      .git-gen {
+        flex: none; width: 30px; align-self: stretch; display: flex; align-items: center; justify-content: center;
+        background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #a371f7; cursor: pointer;
+      }
+      .git-gen:hover:not(:disabled) { border-color: #a371f7; background: #2a1f3d; }
+      .git-gen:disabled { opacity: 0.5; cursor: default; }
       .git-commit {
         background: #1f6feb; border: none; border-radius: 6px; color: #fff;
         padding: 6px 0; font-size: 12.5px; cursor: pointer;
@@ -412,7 +456,7 @@
         font-size: 14.5px; max-width: 40%; overflow: hidden;
         text-overflow: ellipsis; white-space: nowrap;
       }
-      .seg { display: flex; gap: 4px; margin: 8px 14px 0; }
+      .seg { display: flex; gap: 4px; margin: 8px 14px; flex: none; }
       .seg button { flex: 1; font-size: 11.5px; padding: 4px 0; background: #161921; }
       .seg button.on { background: #1f2733; color: #fff; border-color: #3a424c; }
       header .meta { color: #7d8590; font-size: 12px; }

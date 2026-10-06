@@ -21,5 +21,35 @@ if (!src) {
   process.exit(1);
 }
 fs.mkdirSync(destDir, { recursive: true });
-fs.copyFileSync(src, dest);
-console.log(`[prepkg] ${src} -> ${dest} (${(fs.statSync(dest).size / 1024 / 1024).toFixed(1)} MB)`);
+// 产物没变就不重复拷 102MB：比对大小 + mtime（PyInstaller 每次重建 mtime 必变，足够可靠）
+if (
+  fs.existsSync(dest) &&
+  fs.statSync(dest).size === fs.statSync(src).size &&
+  fs.statSync(dest).mtimeMs === fs.statSync(src).mtimeMs
+) {
+  console.log(`[prepkg] sidecar 未变化，跳过拷贝：${dest}`);
+} else {
+  fs.copyFileSync(src, dest);
+  console.log(`[prepkg] ${src} -> ${dest} (${(fs.statSync(dest).size / 1024 / 1024).toFixed(1)} MB)`);
+}
+
+// rg.exe（ripgrep）：工作台搜索的加速依赖，随包分发到 resources/bin。
+// 来源优先 PATH 上的 rg（`where rg`），找不到只告警不失败——daemon 会退回 Python 遍历搜索。
+const rgDir = path.join(destDir, "rg");
+fs.mkdirSync(rgDir, { recursive: true });
+const rgDest = path.join(rgDir, process.platform === "win32" ? "rg.exe" : "rg");
+let rgSrc = null;
+try {
+  const { execSync } = require("child_process");
+  const hit = execSync(process.platform === "win32" ? "where rg" : "which rg", { encoding: "utf-8" })
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
+  if (hit && fs.existsSync(hit)) rgSrc = hit;
+} catch {}
+if (rgSrc) {
+  fs.copyFileSync(rgSrc, rgDest);
+  console.log(`[prepkg] ${rgSrc} -> ${rgDest}`);
+} else {
+  console.warn("[prepkg] rg not found on PATH — packaged app will fall back to slow Python search");
+}

@@ -32,6 +32,13 @@ export npm_config_registry="https://registry.npmmirror.com"            # npm 镜
 在项目根目录（venv 激活状态下）：
 
 ```bash
+python packaging/build_sidecar.py
+```
+
+- **带缓存**：`src/harness` 源码与 PyInstaller 版本没变时直接复用上次产物（哈希记录在 `packaging/.build_hash`），秒级跳过；只有 Python 源码真的变了才全量重打；
+- 等价的手动命令（build_sidecar.py 内部执行的就是它）：
+
+```bash
 pyinstaller --onefile --name harness-server \
   --collect-all litellm \
   --collect-all tiktoken \
@@ -62,15 +69,32 @@ sleep 10 && curl http://127.0.0.1:8123/health
 
 ## 第 2 步：打包 Windows 安装包
 
+**快速迭代（推荐日常用）**：
+
 ```bash
-cd apps/desktop
-npm run bundle        # esbuild 打 React 渲染进程
-npx electron-builder --win
-# 或一条龙（含 prepkg 拷贝 sidecar）：
-npm run dist
+cd apps/desktop && npm run dist:fast
 ```
 
-- `prepkg.cjs` 会把 `packaging/dist/harness-server.exe` 拷到 `apps/desktop/build/`，electron-builder 经 extraResources 内嵌进安装包 resources/；
+- 只出**免安装目录**（`dist/win-unpacked/`，直接运行里面的 `Y Harness.exe`），跳过 NSIS 安装包和 zip 两道压缩；
+- `--compression store`：不再压缩 102MB 的 sidecar，electron-builder 从几分钟缩到几十秒；
+- `prepkg.cjs` 检测到 sidecar 没变会跳过 102MB 拷贝。
+
+**发布完整安装包**：
+
+```bash
+cd apps/desktop && npm run dist
+```
+
+- 产出 NSIS 安装包 + zip（双 target 全量压缩，最慢，只在你真正要发版时跑）。
+
+```bash
+cd apps/desktop
+npm run dist:fast      # 日常迭代：免安装目录 + 不压缩，几十秒
+npm run dist           # 发版：NSIS 安装包 + zip 全量压缩
+```
+
+- `prepkg.cjs` 会把 `packaging/dist/harness-server.exe` 拷到 `apps/desktop/build/`（没变化时跳过拷贝），electron-builder 经 extraResources 内嵌进安装包 resources/；
+- `prepkg.cjs` 同时会把 PATH 上找到的 `rg.exe`（ripgrep）拷到 `apps/desktop/build/rg/`，经 extraResources 放到 resources/bin；主进程拉起 daemon 时把该目录前插进 PATH，服务端搜索（ripgrep 加速）即生效——找不到 rg 只告警，运行时退回 Python 遍历搜索；
 - 产物：`apps/desktop/dist/My-Harness Setup <版本>.exe`（NSIS 安装包，内嵌 sidecar）；
 - 安装包内的启动逻辑：优先连接已运行的 daemon → 尝试 resources 里的 `harness-server.exe` → 回退 PATH 中的 `harness serve`。
 

@@ -38,6 +38,7 @@ THINKING_LEVELS = ("off", "low", "high", "max")
 from ..config import Config, load_config
 from ..context.compactor import ContextEngine
 from ..core.events import EventStore, EventType
+from ..core.messages import Message, TextBlock
 from ..core.session import Session
 from ..loop.react import SYSTEM_TEMPLATE, Budget, ReActLoop
 from ..memory.blocks import BlockStore
@@ -263,6 +264,8 @@ class ServerState:
             self._git_unstage(msg)
         elif t == "GitCommit":
             self._git_commit(msg)
+        elif t == "GitGenMsg":
+            await self._git_gen_msg(msg)
         elif t == "GitDiff":
             self._git_diff(msg)
         elif t == "GitFileBase":
@@ -818,49 +821,121 @@ class ServerState:
         self._notify({"type": "Notice", "text": f"已删除 {msg.get('path')}（可在 .my-harness/trash 找回）"})
 
     def _search_ws(self, msg: dict) -> None:
-        """跨文件搜索（复用 grep 语义）：单事件返回，≤300 命中，二进制/跳过目录不进。"""
+        """跨文件搜索（VSCode 式）：优先 ripgrep（快且遵守 .gitignore），无 rg 退回 Python 遍历。
+        返回内容命中 + 文件名命中两组；单事件返回，≤limit 命中。"""
         import re as _re
+        import shutil
 
         q = msg.get("query", "")
         if not q:
             raise ValueError("query is required")
         is_regex = bool(msg.get("is_regex"))
-        try:
-            pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
-        except _re.error as e:
-            raise ValueError(f"invalid regex: {e}")
+        if not is_regex:
+            try:
+                _re.compile(q)
+            except _re.error:
+                is_regex = True  # 非法正则按字面量搜（含转义由 rg -F / re.escape 处理）
         limit = min(int(msg.get("max", 300)), 500)
         root = Path(self.cfg.workspace).resolve()
-        ignored = self._gitignore_matcher()
-        results, truncated = [], False
-        for p in root.rglob("*"):
-            if len(results) >= limit:
-                truncated = True
-                break
-            if not p.is_file():
-                continue
-            rel = p.relative_to(root).as_posix()
-            parts = rel.split("/")
-            if any(seg in self._SKIP_DIRS or ignored(seg) for seg in parts[:-1]) or ignored(rel):
-                continue
+        results: list[dict] = []
+        files: list[str] = []
+        truncated = False
+        rg = shutil.which("rg")
+        rg_err = False
+        if rg:
+            import subprocess
+
+            def _rg(args: list[str]) -> tuple[int, str]:
+                try:
+                    r = subprocess.run(
+                        [rg, *args], cwd=root, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=15,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    return 2, ""
+                return r.returncode, r.stdout or ""
+
+            args = ["--hidden", "--json", "--smart-case", "--no-ignore-messages",
+                    "-g", "!.git/**", "-g", "!node_modules/**", "-g", "!__pycache__/**",
+                    "-g", "!.venv/**", "-g", "!venv/**"]
+            if not is_regex:
+                args.append("-F")  # 字面量搜索
+            args += ["-m", str(limit), "--", q, "."]
+            rc, out = _rg(args)
+            rg_err = rc >= 2  # rg 出错（如非法正则）：退回 Python 兜底
+            if rc <= 1:  # 0=有命中 1=无命中；2 才是错误
+                # --json：单行一个事件，内容含控制字符（\r/\x1f 等）也不会破坏解析
+                for jline in out.splitlines():
+                    try:
+                        ev = json.loads(jline)
+                    except ValueError:
+                        continue
+                    if ev.get("type") != "match":
+                        continue
+                    d = ev.get("data", {})
+                    subs = d.get("submatches") or [{}]
+                    rel = (d.get("path", {}).get("text") or "").replace("\\", "/")
+                    if rel.startswith("./"):
+                        rel = rel[2:]
+                    results.append(
+                        {
+                            "path": rel,
+                            "line": d.get("line_number") or 1,
+                            "col": (subs[0].get("start") or 0) + 1,
+                            "text": (d.get("lines", {}).get("text") or "").rstrip("\n")[:300],
+                        }
+                    )
+                truncated = len(results) >= limit
+                # 文件名匹配：rg --files 列文件（同样遵守 .gitignore），按名字含关键字过滤
+                _, fl = _rg(["--hidden", "--files", "-g", "!.git/**"])
+                ql = q.lower()
+                for rel in fl.splitlines():
+                    name = rel.split("/")[-1]
+                    if (ql in name.lower()) if not is_regex else _re.search(q, name):
+                        files.append(rel)
+                        if len(files) >= 30:
+                            break
+        if not rg or rg_err:
+            ignored = self._gitignore_matcher()
             try:
-                if p.stat().st_size > 256 * 1024:
+                pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
+            except _re.error as e:
+                raise ValueError(f"invalid regex: {e}")
+            results, files, truncated = [], [], False  # rg 失败场景重置后全量兜底
+            try:
+                pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
+            except _re.error as e:
+                raise ValueError(f"invalid regex: {e}")
+            for p in root.rglob("*"):
+                if len(results) >= limit:
+                    truncated = True
+                    break
+                if not p.is_file():
                     continue
-                raw = p.read_bytes()
-                if b"\0" in raw[:8192]:
+                rel = p.relative_to(root).as_posix()
+                parts = rel.split("/")
+                if any(seg in self._SKIP_DIRS or ignored(seg) for seg in parts[:-1]) or ignored(rel):
                     continue
-                text = raw.decode("utf-8", errors="replace")
-            except OSError:
-                continue
-            for i, line in enumerate(text.splitlines(), 1):
-                m = pat.search(line)
-                if m:
-                    results.append({"path": rel, "line": i, "col": m.start() + 1, "text": line[:300]})
-                    if len(results) >= limit:
-                        truncated = True
-                        break
+                if q.lower() in p.name.lower() and len(files) < 30:
+                    files.append(rel)
+                try:
+                    if p.stat().st_size > 256 * 1024:
+                        continue
+                    raw = p.read_bytes()
+                    if b"\0" in raw[:8192]:
+                        continue
+                    text = raw.decode("utf-8", errors="replace")
+                except OSError:
+                    continue
+                for i, line in enumerate(text.splitlines(), 1):
+                    m = pat.search(line)
+                    if m:
+                        results.append({"path": rel, "line": i, "col": m.start() + 1, "text": line[:300]})
+                        if len(results) >= limit:
+                            truncated = True
+                            break
         self._notify(
-            {"type": "SearchResult", "query": q, "results": results, "total": len(results), "truncated": truncated}
+            {"type": "SearchResult", "query": q, "results": results, "files": files, "total": len(results), "truncated": truncated}
         )
 
     def _run_git(self, *args: str, timeout: int = 10) -> str | None:
@@ -953,6 +1028,37 @@ class ServerState:
         path = msg.get("path", "")
         base = self._run_git("show", f":{path}")
         self._notify({"type": "FileBase", "path": path, "content": base if base is not None else ""})
+
+    async def _git_gen_msg(self, msg: dict) -> None:
+        """AI 生成提交信息：暂存 diff（无暂存则退回工作区 diff）喂给当前模型，回传一行 conventional commit。"""
+        diff = self._run_git("diff", "--cached") or ""
+        if not diff.strip():
+            diff = self._run_git("diff") or ""
+        if not diff.strip():
+            self._notify(
+                {"type": "GitCommitMsg", "ok": False, "error": "没有可提交的更改（暂存区与工作区都为空）"}
+            )
+            return
+        provider = self.provider_factory()
+        try:
+            result = await provider.chat(
+                system=(
+                    "You write git commit messages. Output ONLY the commit message itself: "
+                    "one concise conventional-commit line `type(scope): subject` "
+                    "(feat/fix/refactor/docs/chore/test...), subject in Chinese, no quotes, "
+                    "no code fences, no explanation, no trailing period."
+                ),
+                messages=[
+                    Message(role="user", blocks=[TextBlock(text=f"Staged diff:\n```diff\n{diff[:8000]}\n```")])
+                ],
+                tools=[],
+            )
+        except Exception as e:
+            self._notify({"type": "GitCommitMsg", "ok": False, "error": f"{type(e).__name__}: {e}"})
+            return
+        text = (result.text or "").strip().strip("`").strip()
+        first = text.splitlines()[0].strip() if text else ""
+        self._notify({"type": "GitCommitMsg", "ok": bool(first), "message": first, "error": "" if first else "模型没有返回有效信息"})
 
     def _upload_image(self, msg: dict) -> None:
         """粘贴的图片落盘到工作区 attachments/，并以 base64 回传（发送时作为多模态块）。"""

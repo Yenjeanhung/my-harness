@@ -121,6 +121,24 @@ interface SpawnAttempt {
   args: string[];
 }
 
+// rg（ripgrep）随包分发：打包后在 resources/bin，开发时在 build/rg。
+// 前插进 daemon 的 PATH，服务端 shutil.which("rg") 命中即用快速搜索；都没有则自然退回 Python 遍历。
+function daemonEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const exe = process.platform === "win32" ? "rg.exe" : "rg";
+  const dirs = [
+    process.resourcesPath ? path.join(process.resourcesPath, "bin") : "",
+    path.join(__dirname, "build", "rg"),
+  ];
+  for (const d of dirs) {
+    if (d && fs.existsSync(path.join(d, exe))) {
+      env.PATH = d + path.delimiter + (env.PATH || "");
+      break;
+    }
+  }
+  return env;
+}
+
 async function ensureServer(workspace?: string | null): Promise<"attached" | "started" | "restarted" | "unavailable"> {
   const h = await probeHealth();
   if (h.ok) {
@@ -144,7 +162,7 @@ async function ensureServer(workspace?: string | null): Promise<"attached" | "st
     const cmd = a.file || a.cmd;
     if (!cmd) continue;
     try {
-      const child = spawn(cmd, a.args, { stdio: "ignore" });
+      const child = spawn(cmd, a.args, { stdio: "ignore", env: daemonEnv() });
       child.on("error", () => {});
       sidecar = child;
     } catch {

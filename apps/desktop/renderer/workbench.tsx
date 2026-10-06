@@ -140,8 +140,9 @@ const cmLinter = linter(
 
 // —— 资源管理器：懒展开文件树 + 树内增删改 + 跨文件搜索 ——
 export function FileTree(props: {
+  mode: "tree" | "search" | "git"; // 由 app 级活动栏控制
   listing: { path: string; entries: DirEntry[]; n: number } | null;
-  searchRes: { query: string; results: { path: string; line: number; col: number; text: string }[]; total: number; truncated: boolean } | null;
+  searchRes: { query: string; results: { path: string; line: number; col: number; text: string }[]; files: string[]; total: number; truncated: boolean } | null;
   changed: string[];
   gitFiles: Record<string, string>;
   scm: { repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] };
@@ -149,10 +150,12 @@ export function FileTree(props: {
   onOpen(path: string, line?: number): void;
   onDiff(path: string): void;
   onRefresh(): void;
+  onCollapse(): void; // 收起侧栏（VSCode 资源管理器标题栏最后一个按钮）
   onStage(path: string): void;
   onStageAll(): void;
   onUnstage(path: string): void;
   onCommit(message: string, all: boolean): void;
+  onGenMsg(): void;
 }) {
   const [entries, setEntries] = useState<Record<string, DirEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set([""]));
@@ -161,7 +164,6 @@ export function FileTree(props: {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [newEntry, setNewEntry] = useState<{ parent: string; kind: "file" | "dir" } | null>(null);
   const [newName, setNewName] = useState("");
-  const [mode, setMode] = useState<"tree" | "search" | "git">("tree");
   const [searchQ, setSearchQ] = useState("");
   const [commitMsg, setCommitMsg] = useState("");
   const lastSeq = useRef(0);
@@ -340,32 +342,36 @@ export function FileTree(props: {
 
   return (
     <div className="ft">
-      {/* VSCode 式活动栏：视图切换 + 刷新，替代原顶部拥挤的 seg 按钮 */}
-      <div className="ft-act">
-        <button title="资源管理器" className={mode === "tree" ? "on" : ""} onClick={() => setMode("tree")}>
-          <Icon name="folder" size={16} />
-        </button>
-        <button title="搜索" className={mode === "search" ? "on" : ""} onClick={() => setMode("search")}>
-          <Icon name="search" size={16} />
-        </button>
-        <button
-          title="源代码管理"
-          className={mode === "git" ? "on" : ""}
-          onClick={() => {
-            setMode("git");
-            props.onRefresh(); // 进面板即拉最新 git 状态
-          }}
-        >
-          <Icon name="branch" size={16} />
-          {props.scm.repo && props.scm.files.length > 0 && <b className="act-badge">{props.scm.files.length}</b>}
-        </button>
-        <div className="act-spacer" />
-        <button title="刷新（同步 git 状态）" onClick={props.onRefresh}>
-          <Icon name="refresh" size={14} />
-        </button>
-      </div>
-      <div className="ft-main">
-      {mode === "tree" ? (
+      {props.mode === "tree" && (
+        <div className="ft-head">
+          <span className="ft-head-title">资源管理器</span>
+          <span className="ft-head-acts" onClick={(ev) => ev.stopPropagation()}>
+            <button className="ft-b" title="新建文件" onClick={() => { setNewEntry({ parent: "", kind: "file" }); setNewName(""); }}>
+              <Icon name="filePlus" size={13} />
+            </button>
+            <button className="ft-b" title="新建文件夹" onClick={() => { setNewEntry({ parent: "", kind: "dir" }); setNewName(""); }}>
+              <Icon name="folderPlus" size={13} />
+            </button>
+            <button className="ft-b" title="刷新（同步目录与 git 状态）" onClick={props.onRefresh}>
+              <Icon name="refresh" size={13} />
+            </button>
+            <button
+              className="ft-b"
+              title="折叠全部目录"
+              onClick={() => {
+                setExpanded(new Set([""]));
+                if (!entries[""]) sendCmd({ type: "ListDir", path: "" });
+              }}
+            >
+              <Icon name="fold" size={13} />
+            </button>
+            <button className="ft-b" title="收起侧栏" onClick={props.onCollapse}>
+              <Icon name="panel" size={13} />
+            </button>
+          </span>
+        </div>
+      )}
+      {props.mode === "tree" ? (
         <div className="ft-tree">
           {newEntry?.parent === "" && (
             <div className="ft-row" style={{ paddingLeft: 8 }}>
@@ -389,7 +395,7 @@ export function FileTree(props: {
           ))}
           {!root.length && <div className="ft-empty">(空目录或加载中)</div>}
         </div>
-      ) : mode === "search" ? (
+      ) : props.mode === "search" ? (
         <div className="ft-tree">
           <div className="ft-search">
             <input
@@ -402,11 +408,26 @@ export function FileTree(props: {
               }}
             />
           </div>
-          {props.searchRes && (
+          {props.searchRes && ((props.searchRes.files?.length ?? 0) > 0 || props.searchRes.results.length > 0) && (
             <div className="ft-smeta">
-              {props.searchRes.total} 个命中{props.searchRes.truncated ? "（已截断）" : ""}
+              {(props.searchRes.files?.length ?? 0) > 0 && `${props.searchRes.files.length} 个文件名匹配 · `}
+              {props.searchRes.total} 个内容命中{props.searchRes.truncated ? "（已截断）" : ""}
             </div>
           )}
+          {(props.searchRes?.files?.length ?? 0) > 0 && (
+            <div className="ft-ghead">文件名匹配</div>
+          )}
+          {props.searchRes?.files?.map((f) => {
+            const name = f.split("/").pop() || f;
+            return (
+              <div key={"f" + f} className="ft-row" style={{ paddingLeft: 10 }} title={f} onClick={() => props.onOpen(f)}>
+                <span className="ft-icon"><Icon name="file" size={11} /></span>
+                <span className="ft-name">{name}</span>
+                <span className="ft-dir" style={{ color: "#6e7681", fontSize: 10.5, marginLeft: "auto" }}>{f.slice(0, f.length - name.length - 1)}</span>
+              </div>
+            );
+          })}
+          {(props.searchRes?.results?.length ?? 0) > 0 && <div className="ft-ghead">内容命中</div>}
           {[...searchGroups.entries()].map(([path, hits]) => (
             <div key={path}>
               <div className="ft-spath" title={path} onClick={() => props.onOpen(path)}>
@@ -422,20 +443,30 @@ export function FileTree(props: {
           ))}
           {props.searchRes && props.searchRes.total === 0 && <div className="ft-empty">无匹配</div>}
         </div>
-      ) : (
-        <GitPanel
-          scm={props.scm}
-          msg={commitMsg}
-          setMsg={setCommitMsg}
-          onStage={props.onStage}
-          onStageAll={props.onStageAll}
-          onUnstage={props.onUnstage}
-          onCommit={props.onCommit}
-          onDiff={props.onDiff}
-          onOpen={props.onOpen}
-        />
-      )}
-      </div>
+      ) : props.mode === "git" ? (
+        <>
+          <div className="ft-head">
+            <span className="ft-head-title">源代码管理</span>
+            <span className="ft-head-acts">
+              <button className="ft-b" title="刷新（同步目录与 git 状态）" onClick={props.onRefresh}>
+                <Icon name="refresh" size={13} />
+              </button>
+            </span>
+          </div>
+          <GitPanel
+            scm={props.scm}
+            msg={commitMsg}
+            setMsg={setCommitMsg}
+            onStage={props.onStage}
+            onStageAll={props.onStageAll}
+            onUnstage={props.onUnstage}
+            onCommit={props.onCommit}
+            onGenMsg={props.onGenMsg}
+            onDiff={props.onDiff}
+            onOpen={props.onOpen}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -449,10 +480,23 @@ function GitPanel(props: {
   onStageAll(): void;
   onUnstage(path: string): void;
   onCommit(message: string, all: boolean): void;
+  onGenMsg(): void; // AI 生成提交信息
   onDiff(path: string): void;
   onOpen(path: string, line?: number): void;
 }) {
   const { scm } = props;
+  const [genPending, setGenPending] = useState(false);
+  // AI 生成的提交信息（app.tsx 转发的 wb-gitmsg 事件）→ 填进输入框
+  useEffect(() => {
+    const onMsg = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as { ok: boolean; message?: string; error?: string };
+      setGenPending(false);
+      if (d.ok && d.message) props.setMsg(d.message);
+    };
+    window.addEventListener("wb-gitmsg", onMsg);
+    return () => window.removeEventListener("wb-gitmsg", onMsg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // xy 两位码：X=暂存区（第 1 位）、Y=工作区（第 2 位）；?? 未跟踪
   const staged = scm.files.filter((f) => f.xy[0] !== " " && f.xy[0] !== "?");
   const changes = scm.files.filter((f) => f.xy[1] !== " " || f.xy[0] === "?");
@@ -491,19 +535,33 @@ function GitPanel(props: {
     );
   return (
     <div className="ft-git">
-      <textarea
-        className="git-msg"
-        placeholder="提交信息…"
-        value={props.msg}
-        rows={2}
-        onChange={(e) => props.setMsg(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canCommit) {
-            props.onCommit(props.msg.trim(), staged.length === 0);
-            props.setMsg("");
-          }
-        }}
-      />
+      <div className="git-msg-row">
+        <textarea
+          className="git-msg"
+          placeholder="提交信息…"
+          value={props.msg}
+          rows={2}
+          onChange={(e) => props.setMsg(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canCommit) {
+              props.onCommit(props.msg.trim(), staged.length === 0);
+              props.setMsg("");
+            }
+          }}
+        />
+        <button
+          className="git-gen"
+          title={genPending ? "生成中…" : "AI 生成提交信息（基于暂存 diff）"}
+          disabled={genPending}
+          onClick={() => {
+            setGenPending(true);
+            props.onGenMsg();
+            setTimeout(() => setGenPending(false), 60000); // 兜底复位：模型异常时不永久卡灰
+          }}
+        >
+          <Icon name="sparkles" size={12} />
+        </button>
+      </div>
       <button
         className="git-commit"
         disabled={!canCommit}

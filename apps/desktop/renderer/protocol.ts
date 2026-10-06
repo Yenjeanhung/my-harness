@@ -172,12 +172,14 @@ export type WsEvent =
       type: "SearchResult";
       query: string;
       results: { path: string; line: number; col: number; text: string }[];
+      files?: string[];
       total: number;
       truncated: boolean;
     }
   | { type: "GitStatus"; repo: boolean; branch: string; files: { path: string; code: string; xy?: string }[] }
   | { type: "GitDiff"; path: string; diff: string }
   | { type: "GitDone"; op: "stage" | "unstage" | "commit"; ok: boolean; message: string }
+  | { type: "GitCommitMsg"; ok: boolean; message?: string; error?: string }
   | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)
@@ -245,6 +247,7 @@ export type WsCommand =
   | { type: "GitStageAll" }
   | { type: "GitUnstage"; path: string }
   | { type: "GitCommit"; message: string; all?: boolean }
+  | { type: "GitGenMsg" }
   | { type: "GitFileBase"; path: string }
   | { type: "RenameSession"; session_id: string; title: string }
   | { type: "DeleteSession"; session_id: string }

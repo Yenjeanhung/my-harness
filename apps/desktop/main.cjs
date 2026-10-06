@@ -114,6 +114,21 @@ function killPortListeners(port) {
     });
   });
 }
+function daemonEnv() {
+  const env = { ...process.env };
+  const exe = process.platform === "win32" ? "rg.exe" : "rg";
+  const dirs = [
+    process.resourcesPath ? import_path.default.join(process.resourcesPath, "bin") : "",
+    import_path.default.join(__dirname, "build", "rg")
+  ];
+  for (const d of dirs) {
+    if (d && import_fs.default.existsSync(import_path.default.join(d, exe))) {
+      env.PATH = d + import_path.default.delimiter + (env.PATH || "");
+      break;
+    }
+  }
+  return env;
+}
 async function ensureServer(workspace) {
   const h = await probeHealth();
   if (h.ok) {
@@ -136,7 +151,7 @@ async function ensureServer(workspace) {
     const cmd = a.file || a.cmd;
     if (!cmd) continue;
     try {
-      const child = (0, import_child_process.spawn)(cmd, a.args, { stdio: "ignore" });
+      const child = (0, import_child_process.spawn)(cmd, a.args, { stdio: "ignore", env: daemonEnv() });
       child.on("error", () => {
       });
       sidecar = child;

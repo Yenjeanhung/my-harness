@@ -299,7 +299,9 @@ function App() {
   const [moveSession, setMoveSession] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [groupBy, setGroupBy] = useState<"date" | "group">("date"); // date | topic | group
-  const [sideTab, setSideTab] = useState<"sessions" | "projects" | "files">("sessions"); // 侧栏第三个 tab：项目
+  const [sideTab, setSideTab] = useState<"sessions" | "files">("sessions"); // 两种模式：会话（harness）/ 代码（IDE）
+  const [codeMode, setCodeMode] = useState<"tree" | "search" | "git">("tree"); // 代码面板子视图（由活动栏切换）
+  const [showProjects, setShowProjects] = useState(false); // 会话模式内的项目子面板
   const [projects, setProjects] = useState<{ current: string | null; recent: string[] }>({
     current: null,
     recent: [],
@@ -329,7 +331,7 @@ function App() {
   const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（底部抽屉）
   // —— 工作台（IDE，见 IDE-DESIGN.md）——
   const [editorOpen, setEditorOpen] = useState(true);
-  const [chatW, setChatW] = useState(480); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
+  const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const chatDrag = useRef<{ startX: number; startW: number } | null>(null);
@@ -348,7 +350,7 @@ function App() {
   const [reveal, setReveal] = useState<{ path: string; line: number } | null>(null);
   const [dirListing, setDirListing] = useState<{ path: string; entries: { name: string; kind: "file" | "dir"; size: number; mtime: number }[]; n: number } | null>(null);
   const dirSeq = useRef(0);
-  const [searchRes, setSearchRes] = useState<{ query: string; results: { path: string; line: number; col: number; text: string }[]; total: number; truncated: boolean } | null>(null);
+  const [searchRes, setSearchRes] = useState<{ query: string; results: { path: string; line: number; col: number; text: string }[]; files: string[]; total: number; truncated: boolean } | null>(null);
   const [gitFiles, setGitFiles] = useState<Record<string, string>>({});
   const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] }>({ repo: false, branch: "", files: [] });
   const [gitBranch, setGitBranch] = useState("");
@@ -459,7 +461,7 @@ function App() {
     const onMove = (e: MouseEvent) => {
       if (!chatDrag.current) return;
       const w = chatDrag.current.startW - (e.clientX - chatDrag.current.startX);
-      setChatW(Math.max(340, Math.min(window.innerWidth * 0.55, w)));
+      setChatW(Math.max(370, Math.min(window.innerWidth * 0.55, w))); // 370 以下模型选择器等图标放不下
     };
     const onUp = () => {
       chatDrag.current = null;
@@ -743,7 +745,7 @@ function App() {
           break;
         }
         case "SearchResult":
-          setSearchRes({ query: e.query, results: e.results, total: e.total, truncated: e.truncated });
+          setSearchRes({ query: e.query, results: e.results, files: e.files || [], total: e.total, truncated: e.truncated });
           break;
         case "GitStatus":
           setGitBranch(e.branch || "");
@@ -755,6 +757,12 @@ function App() {
           if (!e.ok) addItem({ kind: "error", text: `Git ${e.op} 失败：${e.message}` });
           else if (e.op === "commit")
             addItem({ kind: "notice", text: `已提交：${(e.message || "").split("\n")[0]}` });
+          break;
+        case "GitCommitMsg":
+          // AI 生成的提交信息：转发给 Git 面板（生成失败也走同一事件，面板内提示）
+          window.dispatchEvent(
+            new CustomEvent("wb-gitmsg", { detail: { ok: e.ok, message: e.message, error: e.error } })
+          );
           break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
@@ -1329,9 +1337,9 @@ function App() {
     const p = await window.myharness?.pickFolder?.();
     if (p) switchProject(p);
   };
-  // 进入项目 tab 时拉取最近项目列表
+  // 进入项目面板时拉取最近项目列表
   useEffect(() => {
-    if (sideTab !== "projects") return;
+    if (sideTab !== "sessions" || !showProjects) return;
     window.myharness?.getProjects?.().then(setProjects).catch(() => {});
   }, [sideTab]);
 
@@ -1680,12 +1688,61 @@ function App() {
   }
 
   // —— 工作区（聊天）视图 ——
+  // 活动栏当前激活项：会话 / 代码下的三个子视图（与 VSCode 一致，点击已激活项收起侧栏）
+  const railActive = sideTab === "sessions" ? "sessions" : codeMode;
+  const toggleRail = (target: "sessions" | "tree" | "search" | "git") => {
+    const targetTab = target === "sessions" ? "sessions" : "files";
+    if (sidebarOpen && sideTab === targetTab && (target === "sessions" || codeMode === target)) {
+      setSidebarOpen(false);
+      return;
+    }
+    setSideTab(targetTab);
+    if (target !== "sessions") {
+      setCodeMode(target);
+      refreshFiles(); // 进代码面板即拉最新目录/git 状态
+    } else {
+      setShowProjects(false);
+    }
+    setSidebarOpen(true);
+  };
   return (
     <div className="app">
+      <div className="actbar">
+        <button title="会话" className={railActive === "sessions" ? "on" : ""} onClick={() => toggleRail("sessions")}>
+          <Icon name="chat" size={16} />
+        </button>
+        <button title="资源管理器" className={railActive === "tree" ? "on" : ""} onClick={() => toggleRail("tree")}>
+          <Icon name="folder" size={16} />
+        </button>
+        <button title="搜索" className={railActive === "search" ? "on" : ""} onClick={() => toggleRail("search")}>
+          <Icon name="search" size={16} />
+        </button>
+        <button title="源代码管理" className={railActive === "git" ? "on" : ""} onClick={() => toggleRail("git")}>
+          <Icon name="branch" size={16} />
+          {gitScm.repo && gitScm.files.length > 0 && <b className="act-badge">{gitScm.files.length}</b>}
+        </button>
+        <div className="act-spacer" />
+      </div>
       {sidebarOpen && (
       <aside>
-        <button className="newbtn" onClick={newSession} disabled={conn !== "open"}>＋ 新建会话</button>
         {sideTab === "sessions" && (
+          <button className="newbtn" onClick={newSession} disabled={conn !== "open"}>＋ 新建会话</button>
+        )}
+        {sideTab === "files" && (
+          <div
+            className="proj-bar"
+            title={(projects.current || "默认目录（daemon 启动目录）") + (window.myharness ? " · 点击选择其他目录" : "")}
+            onClick={() => !switching && pickProject()}
+          >
+            <Icon name="folder" size={12} />
+            <span className="proj-bar-name">
+              {switching ? "切换中…" : projects.current ? projects.current.split(/[\\/]/).filter(Boolean).pop() : "打开目录…"}
+            </span>
+            <span className="proj-bar-act">{window.myharness ? "打开" : ""}</span>
+          </div>
+        )}
+        <div className="aside-body">
+        {sideTab === "sessions" && !showProjects && (
           <input
             className="search"
             placeholder="搜索会话标题与内容…"
@@ -1695,6 +1752,7 @@ function App() {
         )}
         {sideTab === "files" && (
           <FileTree
+            mode={codeMode}
             listing={dirListing}
             searchRes={searchRes}
             changed={runChanged}
@@ -1704,47 +1762,33 @@ function App() {
             onOpen={openFile}
             onDiff={openDiff}
             onRefresh={refreshFiles}
+            onCollapse={() => setSidebarOpen(false)}
             onStage={(path) => sendCmd({ type: "GitStage", path })}
             onStageAll={() => sendCmd({ type: "GitStageAll" })}
             onUnstage={(path) => sendCmd({ type: "GitUnstage", path })}
             onCommit={(message, all) => sendCmd({ type: "GitCommit", message, all })}
+            onGenMsg={() => sendCmd({ type: "GitGenMsg" })}
           />
         )}
-        {sideTab === "sessions" && <h3>会话</h3>}
-        <div className="seg">
-          <button
-            className={sideTab === "sessions" && groupBy === "date" ? "on" : ""}
-            onClick={() => {
-              setSideTab("sessions");
-              setGroupBy("date");
-            }}
-          >
-            时间
-          </button>
-          <button
-            className={sideTab === "sessions" && groupBy === "group" ? "on" : ""}
-            onClick={() => {
-              setSideTab("sessions");
-              setGroupBy("group");
-            }}
-          >
-            分组
-          </button>
-          <button className={sideTab === "projects" ? "on" : ""} onClick={() => setSideTab("projects")}>
-            项目
-          </button>
-          <button
-            className={sideTab === "files" ? "on" : ""}
-            title="资源管理器"
-            onClick={() => {
-              setSideTab("files");
-              refreshFiles();
-            }}
-          >
-            文件
-          </button>
-        </div>
-        {sideTab === "projects" && (
+        {sideTab === "sessions" && (
+          <div className="side-head">
+            <h3>{showProjects ? "项目" : "会话"}</h3>
+            {!showProjects && (
+              <div className="seg mini">
+                <button className={groupBy === "date" ? "on" : ""} onClick={() => setGroupBy("date")}>时间</button>
+                <button className={groupBy === "group" ? "on" : ""} onClick={() => setGroupBy("group")}>分组</button>
+              </div>
+            )}
+            <button
+              className={"side-ic" + (showProjects ? " on" : "")}
+              title="项目（切换工作区）"
+              onClick={() => setShowProjects((s) => !s)}
+            >
+              <Icon name="folder" size={13} />
+            </button>
+          </div>
+        )}
+        {sideTab === "sessions" && showProjects && (
           <div className="proj-pane">
             <div className="proj-card">
               <div className="proj-label">当前项目</div>
@@ -1786,7 +1830,7 @@ function App() {
             </div>
           </div>
         )}
-        {sideTab === "sessions" && groupBy === "group" && (
+        {sideTab === "sessions" && !showProjects && groupBy === "group" && (
           <>
             <button className="newbtn" style={{ marginTop: 8 }} onClick={() => setShowGroupInput((s) => !s)}>
               ＋ 新建分组
@@ -1812,7 +1856,7 @@ function App() {
             )}
           </>
         )}
-        {sideTab === "sessions" && searchQ.trim() && contentResults.length > 0 && (
+        {sideTab === "sessions" && !showProjects && searchQ.trim() && contentResults.length > 0 && (
           <>
             <div className="ghead" style={{ cursor: "default" }}>
               <span>🔍 内容匹配</span>
@@ -1834,6 +1878,7 @@ function App() {
           </>
         )}
         {sideTab === "sessions" &&
+          !showProjects &&
           (() => {
             const q = searchQ.trim().toLowerCase();
           const filtered = q
@@ -2056,21 +2101,16 @@ function App() {
             </>
           );
         })()}
+        </div>{/* /aside-body */}
         <div className="aside-footer">
           <div className="avatar">本</div>
           <div className="acct">
             <div className="name">本地用户</div>
             <div className="sub">本地模式 · 账号体系开发中</div>
           </div>
-          <button className="gear" title="收起侧栏" onClick={() => setSidebarOpen(false)}>«</button>
           <button className="gear" title="设置" onClick={() => setView("settings")}>⚙</button>
         </div>
       </aside>
-      )}
-      {!sidebarOpen && (
-        <button className="sb-float" title="展开侧栏" onClick={() => setSidebarOpen(true)}>
-          »
-        </button>
       )}
       <div className="ide">
         <div className="ide-body">
@@ -2115,7 +2155,7 @@ function App() {
               chatDrag.current = { startX: e.clientX, startW: chatW };
               e.preventDefault();
             }}
-            onDoubleClick={() => setChatW(480)}
+            onDoubleClick={() => setChatW(400)}
             title="拖拽调对话栏宽 · 双击复位"
           />
         </>
@@ -2126,7 +2166,7 @@ function App() {
           editorOpen && chatHidden
             ? { display: "none" } // 收起对话栏：编辑器占满主区，右缘浮出 « 重开按钮
             : editorOpen
-              ? { width: chatW, minWidth: 340, flex: "none" }
+              ? { width: chatW, minWidth: 370, flex: "none" }
               : { flex: 1 }
         }
       >

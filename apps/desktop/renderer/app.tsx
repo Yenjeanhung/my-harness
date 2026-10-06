@@ -347,9 +347,9 @@ function App() {
   const [reason, setReason] = useState(""); // 当前轮推理增量（保留末 400 字符，ZCode 式正在思考）
   const [reasonFull, setReasonFull] = useState(""); // 本轮完整推理全文：思考区实时流式显示（ZCode 式）
   const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
-  const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（底部抽屉）
+  const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（编辑器下方抽屉）
   // —— 工作台（IDE，见 IDE-DESIGN.md）——
-  const [editorOpen, setEditorOpen] = useState(true);
+  const editorOpen = true; // 编辑器常开：顶部面板开关组只管 左侧栏/终端/对话栏（CodeBuddy 式）
   const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1734,6 +1734,32 @@ function App() {
     }
     setSidebarOpen(true);
   };
+  // 面板开关组（CodeBuddy 式三个 toggle）：左侧栏 / 终端 / 对话栏；对话栏收起后同组浮在编辑器右上角
+  const panelToggles = (
+    <>
+      <button
+        className={sidebarOpen ? "on" : ""}
+        title={sidebarOpen ? "收起左侧边栏" : "展开左侧边栏"}
+        onClick={() => setSidebarOpen((o) => !o)}
+      >
+        <Icon name="panel" size={14} />
+      </button>
+      <button
+        className={termOpen ? "on" : ""}
+        title={termOpen ? "收起终端" : "打开终端"}
+        onClick={() => setTermOpen((o) => !o)}
+      >
+        <Icon name="panelBottom" size={14} />
+      </button>
+      <button
+        className={chatHidden ? "" : "on"}
+        title={chatHidden ? "展开对话栏" : "收起对话栏"}
+        onClick={() => setChatHidden((o) => !o)}
+      >
+        <Icon name="panelRight" size={14} />
+      </button>
+    </>
+  );
   return (
     <div className="app">
       <div className="actbar">
@@ -2147,7 +2173,6 @@ function App() {
       {editorOpen && (
         <>
           <div className="editor-col">
-            {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
             <EditorPane
               tabs={openFiles}
               diffTabs={diffTabsRef.current}
@@ -2178,6 +2203,7 @@ function App() {
               onConflictKeep={() => setConflict(null)}
               onBrowse={() => setSideTab("files")}
             />
+            {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
           </div>
           <div
             className="col-splitter"
@@ -2234,25 +2260,7 @@ function App() {
               </button>
             );
           })()}
-          {editorOpen && !chatHidden && (
-            <button className="term-toggle" title="收起对话栏（编辑器占满主区）" onClick={() => setChatHidden(true)}>
-              »
-            </button>
-          )}
-          <button
-            className={"term-toggle" + (editorOpen ? " on" : "")}
-            title={editorOpen ? "关闭编辑器（对话占满主区）" : "打开编辑器"}
-            onClick={() => setEditorOpen((o) => !o)}
-          >
-            <Icon name="code" size={14} />
-          </button>
-          <button
-            className={"term-toggle" + (termOpen ? " on" : "")}
-            title={termOpen ? "收起终端" : "打开终端"}
-            onClick={() => setTermOpen((o) => !o)}
-          >
-            <Icon name="terminal" size={14} />
-          </button>
+          <div className="panel-toggles">{panelToggles}</div>
         </header>
         {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
           <div className="ctx-pop" ref={ctxPopRef}>
@@ -2653,11 +2661,8 @@ function App() {
           </div>
         </div>
       </div>
-      {!editorOpen && termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
-      {chatHidden && editorOpen && (
-        <button className="chat-float" title="展开对话栏" onClick={() => setChatHidden(false)}>
-          «
-        </button>
+      {chatHidden && (
+        <div className="panel-toggles floated">{panelToggles}</div>
       )}
       </div>
       </div>

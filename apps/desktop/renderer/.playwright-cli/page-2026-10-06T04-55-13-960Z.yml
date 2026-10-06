@@ -1,0 +1,97 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - button "会话" [ref=e5] [cursor=pointer]
+    - button "资源管理器" [ref=e8] [cursor=pointer]
+    - button "搜索" [ref=e11] [cursor=pointer]
+    - button "源代码管理" [ref=e15] [cursor=pointer]
+  - complementary [ref=e20]:
+    - button "＋ 新建会话" [ref=e21] [cursor=pointer]
+    - generic [ref=e22]:
+      - textbox "搜索会话标题与内容…" [ref=e23]
+      - generic [ref=e24]:
+        - heading "会话" [level=3] [ref=e25]
+        - generic [ref=e26]:
+          - button "时间" [ref=e27] [cursor=pointer]
+          - button "分组" [ref=e28] [cursor=pointer]
+        - button "项目（切换工作区）" [ref=e29] [cursor=pointer]
+      - generic [ref=e32]:
+        - generic [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: ▾ 昨天
+          - generic [ref=e35]: "6"
+        - generic [ref=e37] [cursor=pointer]:
+          - generic [ref=e38]: my-harness项目分析
+          - generic [ref=e42]: 昨天 21:08 · 87 ev
+        - generic [ref=e44] [cursor=pointer]:
+          - generic [ref=e45]: 905f8b0ca3
+          - generic [ref=e46]: 昨天 17:34 · 1 ev
+        - generic [ref=e48] [cursor=pointer]:
+          - generic [ref=e49]: 查看我C盘有哪些大文件能清理
+          - generic [ref=e50]: 昨天 16:03 · 140 ev
+        - generic [ref=e52] [cursor=pointer]:
+          - generic [ref=e53]: 6a0d0c3702
+          - generic [ref=e54]: 昨天 16:01 · 1 ev
+        - generic [ref=e56] [cursor=pointer]:
+          - generic [ref=e57]: 用一句话介绍你自己，先想一想
+          - generic [ref=e58]: 昨天 10:42 · 5 ev
+        - generic [ref=e60] [cursor=pointer]:
+          - generic [ref=e61]: hi
+          - generic [ref=e62]: 昨天 10:08 · 13 ev
+      - generic [ref=e63]:
+        - generic [ref=e64] [cursor=pointer]:
+          - generic [ref=e65]: ▾ 本周
+          - generic [ref=e66]: "5"
+        - generic [ref=e68] [cursor=pointer]:
+          - generic [ref=e69]: Fork of my-harness项目分析
+          - generic [ref=e70]: 周日 23:15 · 30 ev
+        - generic [ref=e72] [cursor=pointer]:
+          - generic [ref=e73]: 这是什么
+          - generic [ref=e74]: 周日 19:41 · 5 ev
+        - generic [ref=e76] [cursor=pointer]:
+          - generic [ref=e77]: e2e probe session
+          - generic [ref=e78]: 周日 19:13 · 8 ev
+        - generic [ref=e80] [cursor=pointer]:
+          - generic [ref=e81]: 你好
+          - generic [ref=e82]: 周日 17:46 · 5 ev
+        - generic [ref=e84] [cursor=pointer]:
+          - generic [ref=e85]: hi
+          - generic [ref=e86]: 周日 14:59 · 3 ev
+    - generic [ref=e87]:
+      - generic [ref=e88]: 本
+      - generic [ref=e89]:
+        - generic [ref=e90]: 本地用户
+        - generic [ref=e91]: 本地模式 · 账号体系开发中
+      - button "⚙" [ref=e92] [cursor=pointer]
+  - generic [ref=e94]:
+    - generic [ref=e98]:
+      - generic [ref=e101]:
+        - generic [ref=e103]: "1"
+        - textbox [ref=e105]
+      - generic "报错总览（点击标记跳转，F8 下一条）" [ref=e107]
+      - button "AI" [ref=e110] [cursor=pointer]
+      - generic [ref=e114]:
+        - generic [ref=e115]: 从左侧「文件」打开文件开始阅读 / 编辑
+        - button "浏览项目文件" [ref=e116] [cursor=pointer]
+        - generic [ref=e117]: 单击预览 · 双击固定 tab · Ctrl+S 保存 · Agent 改动会在 tab 上标脏并提示冲突
+    - generic "拖拽调对话栏宽 · 双击复位" [ref=e118]
+    - generic [ref=e119]:
+      - banner [ref=e120]:
+        - generic "未开始" [ref=e122]
+        - button "»" [ref=e123] [cursor=pointer]
+        - button "关闭编辑器（对话占满主区）" [ref=e124] [cursor=pointer]
+        - button "打开终端" [ref=e128] [cursor=pointer]
+      - generic [ref=e132]:
+        - textbox "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…" [ref=e133]
+        - generic [ref=e134]:
+          - button "＋" [ref=e135] [cursor=pointer]
+          - button "权限模式：完全访问 · 跳过所有确认，谨慎使用。" [ref=e137] [cursor=pointer]
+          - generic "思考档位" [ref=e140]:
+            - combobox [ref=e141] [cursor=pointer]:
+              - option "关"
+              - option "低"
+              - option "高" [selected]
+              - option "最高"
+          - combobox "切换模型（仅一个生效）" [ref=e142] [cursor=pointer]:
+            - option "glm-5.3-flash" [selected]
+            - option "glm-5.3"
+            - option "⚙ 管理模型…"
+          - button "↑" [disabled] [ref=e143]

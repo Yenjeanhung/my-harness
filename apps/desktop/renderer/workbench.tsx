@@ -1173,6 +1173,8 @@ export function DiffView({ path, store }: { path: string; store?: { base?: strin
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !store || store.base == null || store.current == null) return;
+    let destroyed = false;
+    let view: MergeView | null = null;
     host.innerHTML = "";
     if (store.base === store.current) {
       const tip = document.createElement("div");
@@ -1181,12 +1183,32 @@ export function DiffView({ path, store }: { path: string; store?: { base?: strin
       host.appendChild(tip);
       return;
     }
-    const view = new MergeView({
-      a: { doc: store.base, extensions: [EditorView.editable.of(false), EditorView.lineWrapping] },
-      b: { doc: store.current, extensions: [EditorView.editable.of(false), EditorView.lineWrapping] },
-      parent: host,
-    });
-    return () => view.destroy();
+    // 与主编辑器同款观感：语法高亮 + oneDark + 行号；超大文件跳过高亮且不折行
+    // （压缩成单行的 bundle 折行会折出数万可视行卡死渲染——整行横滚，VSCode 同款策略）
+    (async () => {
+      const big = Math.max(store.base!.length, store.current!.length) > 400_000;
+      const lang = big ? null : await langExtension(path);
+      if (destroyed) return;
+      const pane = () => [
+        EditorView.editable.of(false),
+        EditorState.readOnly.of(true),
+        ...(big ? [] : [EditorView.lineWrapping]),
+        lineNumbers(),
+        oneDark,
+        ...(lang ? [lang] : []),
+      ];
+      view = new MergeView({
+        a: { doc: store.base, extensions: pane() },
+        b: { doc: store.current, extensions: pane() },
+        parent: host,
+        collapseUnchanged: { margin: 3, minSize: 8 }, // 长段未改动区域折叠（VS Code 式），改动一眼可见
+      });
+    })();
+    return () => {
+      destroyed = true;
+      view?.destroy();
+      view = null;
+    };
   }, [path, store?.base, store?.current]);
 
   return (

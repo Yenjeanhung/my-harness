@@ -178,6 +178,18 @@ export const ICON_PATHS = {
       <path d="M9 4v16" />
     </>
   ),
+  panelBottom: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 15h18" />
+    </>
+  ),
+  panelRight: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M15 4v16" />
+    </>
+  ),
   push: (
     <>
       <path d="M18 15v4a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4" />

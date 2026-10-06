@@ -136,7 +136,7 @@
       .main { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; position: relative; }
       /* —— 工作台三栏（IDE-DESIGN.md M0）：侧栏 | 编辑器列 | 对话列 —— */
       .ide { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; }
-      .ide-body { flex: 1; display: flex; min-height: 0; }
+      .ide-body { flex: 1; display: flex; min-height: 0; position: relative; }
       .main.chat-col { height: auto; min-height: 0; }
       /* 收起侧栏/对话栏后的浮出按钮 */
       .sb-float, .chat-float {
@@ -147,9 +147,9 @@
       .sb-float { left: 6px; top: 50%; transform: translateY(-50%); }
       .chat-float { right: 10px; top: 56px; }
       .sb-float:hover, .chat-float:hover { color: #d7dae0; border-color: #4d5560; }
-      /* 编辑器舞台：宿主常驻 + 覆盖层空态 */
+      /* 编辑器舞台：宿主常驻 + 覆盖层空态；overflow:hidden 兜底——超长单行（压缩过的 bundle 等）不得穿到右栏 */
       .ed { position: relative; }
-      .ed-stage { flex: 1; min-height: 0; display: flex; position: relative; }
+      .ed-stage { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
       .ed-overlay { position: absolute; inset: 0; background: #0d1017; z-index: 5; display: flex; }
       .editor-col {
         flex: 1; display: flex; flex-direction: column; min-width: 260px; min-height: 0;
@@ -244,7 +244,10 @@
       .ed-empty .primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 
       /* diff 视图 */
-      .diff-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+      .diff-wrap { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; position: relative; }
+      /* merge 双栏允许收缩（包自带样式缺 min-width:0，超长单行会把面板撑爆穿栏）；横滚交给各栏 .cm-scroller */
+      .diff-host .cm-mergeView { overflow-x: hidden; }
+      .diff-host .cm-mergeViewEditors, .diff-host .cm-mergeViewEditor { min-width: 0; }
       .diff-head {
         display: flex; justify-content: space-between; gap: 10px; padding: 5px 12px; flex: none;
         color: #7d8590; font-size: 11.5px; border-bottom: 1px solid #262a33;
@@ -255,6 +258,16 @@
       .diff-host .cm-mergeView { height: 100%; }
       .diff-host .cm-editor { height: 100%; font-size: 12.5px; }
       .diff-same, .diff-loading { padding: 24px; color: #6e7681; font-size: 12.5px; text-align: center; }
+      /* diff 面板配色（GitHub 暗色）：绿=新增/右栏，红=删除/左栏，行内词级=深底 */
+      .diff-host .cm-changedLine, .diff-host .cm-insertedLine { background: #2ea04326; }
+      .diff-host .cm-deletedLine, .diff-host .cm-deletedChunk { background: #f851491c; }
+      .diff-host .cm-changedText, .diff-host .cm-insertedText { background: #2ea04355; }
+      .diff-host .cm-deletedText { background: #f8514940; }
+      .diff-host .cm-collapsedLines {
+        text-align: center; color: #7d8590; background: #161b22;
+        border-top: 1px solid #262a33; border-bottom: 1px solid #262a33; padding: 2px 0; cursor: pointer;
+      }
+      .diff-host .cm-gutters { background: #0d1017; border-right: 1px solid #262a33; }
 
       /* —— 文件树（资源管理器）—— */
       .ft { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -649,7 +662,19 @@
         margin: 10px 14px 12px; border: 1px solid #30363d; border-radius: 12px;
         background: #0d1017; padding: 10px 12px 8px; flex: none;
       }
-      /* —— 内嵌终端（底部抽屉，VS Code/ZCode 式）—— */
+      /* —— 内嵌终端（编辑器下方抽屉，VS Code/ZCode 式）—— */
+      /* 面板开关组（CodeBuddy 式：左侧栏 / 终端 / 对话栏），对话栏收起后浮在编辑器右上角 */
+      .panel-toggles { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+      .panel-toggles button {
+        width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+        background: transparent; border: none; border-radius: 6px; color: #7d8590; cursor: pointer; padding: 0;
+      }
+      .panel-toggles button:hover { color: #d7dae0; background: #21262d; }
+      .panel-toggles button.on { color: #79c0ff; background: #111a27; }
+      .panel-toggles.floated {
+        position: absolute; top: 40px; right: 10px; z-index: 45; padding: 2px;
+        background: rgba(22, 25, 33, 0.92); border: 1px solid #30363d; border-radius: 8px;
+      }
       .term-toggle {
         margin-left: auto; background: transparent; border: 1px solid transparent; border-radius: 6px;
         color: #7d8590; cursor: pointer; padding: 3px 7px; display: inline-flex; align-items: center;

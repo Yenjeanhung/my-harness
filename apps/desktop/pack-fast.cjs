@@ -109,8 +109,15 @@ if (!stampOld || stampOld.electron !== stamp.electron || stampOld.icon !== stamp
 // 3) resources/app：主进程/预加载/渲染产物 + 窗口图标 + node-pty 原生模块（普通目录，不用 asar）
 copyIfChanged(path.join(ROOT, "main.cjs"), path.join(APP, "main.cjs"));
 copyIfChanged(path.join(ROOT, "preload.cjs"), path.join(APP, "preload.cjs"));
-for (const f of ["index.html", "bundle.js", "bundle.css"]) {
-  copyIfChanged(path.join(ROOT, "renderer", f), path.join(APP, "renderer", f));
+// 渲染产物：index.html + bundle.js + ESM 分块（chunk-*.js）+ Monaco worker（monaco-*.worker.js）+ css。
+// 按模式收全而不是点名——Monaco 语言分块数量随版本变，点名迟早漏。
+{
+  const renderDir = path.join(ROOT, "renderer");
+  const patterns = [/^index\.html$/, /^bundle\.js$/, /^bundle\.css$/, /^chunk-.*\.(js|css)$/, /^monaco-.*\.worker\.js$/, /^codicon-.*\.ttf$/];
+  for (const name of fs.readdirSync(renderDir)) {
+    if (!patterns.some((p) => p.test(name))) continue;
+    copyIfChanged(path.join(renderDir, name), path.join(APP, "renderer", name));
+  }
 }
 if (fs.existsSync(iconSrc)) copyIfChanged(iconSrc, path.join(APP, "build", "icon.ico"));
 fs.writeFileSync(

@@ -10,6 +10,8 @@ import { Icon, ThinkRow, TerminalPanel, type IconName } from "./icons";
 import { FileTree, EditorPane } from "./workbench";
 import type { FileDoc } from "./workbench";
 import { setSocket } from "./ws";
+import { setWorkspaceRoot, disposeFileModel } from "./monaco";
+import * as lsp from "./lsp";
 import type {
   Img,
   SessionInfo,
@@ -35,12 +37,15 @@ import { mdRender } from "./md";
 const params = new URLSearchParams(window.location.search);
 const WS_URL = params.get("ws") || "ws://127.0.0.1:8765/ws";
 const SERVER_STATE = params.get("server") || "unknown";
+// 当前项目根（main.ts 经 query 传入）：Monaco model 的 file:// URI 基准
+const WORKSPACE_ROOT = params.get("root") || "";
 
 // daemon 握手状态 → 设置页「常规」里的人类可读说明
 const STATE_TEXT: Record<string, string> = {
   attached: "attached",
   started: "sidecar started",
   restarted: "旧 daemon 已替换",
+  starting: "daemon 启动中…（就绪后自动连接）",
   unavailable: "daemon NOT found",
 };
 
@@ -301,6 +306,85 @@ type TestState = { status: "running" } | ModelTestResult;
 type ConnState = "connecting" | "open" | "closed";
 type Section = "models" | "memory" | "mcp" | "skills" | "general";
 
+// —— 顶栏菜单栏（VS Code 式）：文件/编辑/查看/转到/终端/帮助 ——
+// 菜单项由 App 每次渲染用最新闭包构建；点开某项后悬停即切换，外点/Esc 关闭。
+// 弹层 fixed 定位挂在 menubar 里（.mb-pop 自带 no-drag，不受顶栏拖拽区影响）。
+type MenuEntry = { label: string; accel?: string; checked?: boolean; disabled?: boolean; hide?: boolean; run(): void } | "sep";
+
+function MenuBar(props: { menus: { label: string; items: MenuEntry[] }[] }) {
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [open, setOpen] = useState<number | null>(null);
+  const [popAt, setPopAt] = useState({ x: 8, y: 32 });
+  const openAt = (i: number) => {
+    const b = btnRefs.current[i];
+    if (b) {
+      const r = b.getBoundingClientRect();
+      setPopAt({ x: r.left, y: r.bottom + 4 });
+    }
+    setOpen(i);
+  };
+  useEffect(() => {
+    if (open == null) return;
+    const onDown = (e: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) setOpen(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div className="menubar" ref={barRef}>
+      {props.menus.map((m, i) => (
+        <button
+          key={m.label}
+          ref={(el) => {
+            btnRefs.current[i] = el;
+          }}
+          className={"mb-item" + (open === i ? " on" : "")}
+          onClick={() => (open === i ? setOpen(null) : openAt(i))}
+          onMouseEnter={() => {
+            if (open != null && open !== i) openAt(i);
+          }}
+        >
+          {m.label}
+        </button>
+      ))}
+      {open != null && (
+        <div className="mb-pop" style={{ left: popAt.x, top: popAt.y }}>
+          {props.menus[open].items
+            .filter((it) => it === "sep" || !it.hide)
+            .map((it, i) =>
+              it === "sep" ? (
+                <div key={"s" + i} className="mb-sep" />
+              ) : (
+                <div
+                  key={it.label}
+                  className={"mb-row" + (it.disabled ? " dis" : "")}
+                  onClick={() => {
+                    if (it.disabled) return;
+                    setOpen(null);
+                    it.run();
+                  }}
+                >
+                  <span className="mb-check">{it.checked ? "✓" : ""}</span>
+                  <span>{it.label}</span>
+                  {it.accel && <span className="mb-accel">{it.accel}</span>}
+                </div>
+              )
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState<"chat" | "settings">("chat"); // chat | settings
   const [section, setSection] = useState<Section>("models");
@@ -340,6 +424,10 @@ function App() {
   const [thinking, setThinking] = useState<ThinkLevel>("off");
   const [attachments, setAttachments] = useState<Attachment[]>([]); // 文本附件
   const [pasteImages, setPasteImages] = useState<PasteImage[]>([]);
+  // 输入框镜像层：@path:from-to 引用 token 在底下垫成卡片（CodeBuddy 式）。镜像文本透明只留底色，
+  // 与 textarea 同字体/行高/内边距，宽度跟随 clientWidth（滚动条出现时内容宽一致），滚动同步。
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const mirrorRef = useRef<HTMLDivElement | null>(null);
   const [showAttach, setShowAttach] = useState(false);
   const [attachPath, setAttachPath] = useState("");
   const [running, setRunning] = useState(false);
@@ -355,6 +443,19 @@ function App() {
   const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // 顶栏「查看」菜单的编辑器外观开关（localStorage 持久化，重启记住）
+  const [minimapOn, setMinimapOn] = useState(() => localStorage.getItem("yh.minimap") !== "0");
+  const [wrapOn, setWrapOn] = useState(() => localStorage.getItem("yh.wordwrap") === "1");
+  const toggleMinimap = () =>
+    setMinimapOn((v) => {
+      localStorage.setItem("yh.minimap", v ? "0" : "1");
+      return !v;
+    });
+  const toggleWrap = () =>
+    setWrapOn((v) => {
+      localStorage.setItem("yh.wordwrap", v ? "0" : "1");
+      return !v;
+    });
   const chatDrag = useRef<{ startX: number; startW: number } | null>(null);
   const [openFiles, setOpenFiles] = useState<{ path: string; truncated: boolean; binary: boolean; dirty: boolean }[]>([]);
   const openFilesRef = useRef(openFiles);
@@ -373,10 +474,12 @@ function App() {
   const dirSeq = useRef(0);
   const [searchRes, setSearchRes] = useState<{ query: string; results: { path: string; line: number; col: number; text: string }[]; files: string[]; total: number; truncated: boolean } | null>(null);
   const [gitFiles, setGitFiles] = useState<Record<string, string>>({});
-  const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; ahead: number; files: { path: string; code: string; xy: string }[] }>({ repo: false, branch: "", ahead: 0, files: [] });
+  const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; ahead: number; files: { path: string; code: string; xy: string }[]; error?: string }>({ repo: false, branch: "", ahead: 0, files: [] });
   const [gitBranch, setGitBranch] = useState("");
   const [runChanged, setRunChanged] = useState<string[]>([]);
-  const [chatRefs, setChatRefs] = useState<{ path: string; from: number; to: number }[]>([]); // 编辑器选区引用 chip（CodeBuddy 式）
+  const runChangedRef = useRef(runChanged);
+  useEffect(() => { runChangedRef.current = runChanged; }, [runChanged]);
+  const toolPaths = useRef(new Map<string, string>()); // call_id → path（ToolCallResult 补做写盘后重载）
   const [filesRefresh, setFilesRefresh] = useState(0);
   const [permOpen, setPermOpen] = useState(false); // 权限模式下拉
   const [outlineTip, setOutlineTip] = useState<{ text: string; top: number } | null>(null); // 左侧消息导航悬浮预览
@@ -389,6 +492,7 @@ function App() {
   const [sessCost, setSessCost] = useState<SessionCostData | null>(null); // 当前会话累计（落库部分，RunFinished 后刷新）
   const [runUsage, setRunUsage] = useState<{ input_tokens: number; output_tokens: number } | null>(null); // 进行中 run 的实时累计
   const [ctxInfo, setCtxInfo] = useState<{ tokens: number; window: number; static: number } | null>(null); // 当前上下文规模（容量弹窗）
+  const [lastRun, setLastRun] = useState<{ duration_ms?: number; usage?: { input_tokens: number; output_tokens: number }; cost_usd?: number | null } | null>(null); // 最近一次对话（输入框上方用量条）
   const [ctxOpen, setCtxOpen] = useState(false); // 上下文容量弹窗
   const ctxPopRef = useRef<HTMLDivElement | null>(null);
   const [stats, setStats] = useState<StatsState | null>(null); // GetStats 结果（设置页「常规」）
@@ -539,6 +643,14 @@ function App() {
       sendCmd({ type: "GetSettings" });
       // 重连场景：daemon 可能重启过（内存会话已丢），重新挂载当前会话，服务端回放 History 重建界面
       if (sessionIdRef.current) sendCmd({ type: "ResumeSession", session_id: sessionIdRef.current });
+      // Monaco model 的 file:// URI 需要 workspace 绝对路径（LSP 按路径匹配文件）：
+      // 首选 main.ts 经 query 传入的 root；没有（纯浏览器调试）再问 /health
+      if (WORKSPACE_ROOT) setWorkspaceRoot(WORKSPACE_ROOT);
+      else
+        fetch(WS_URL.replace(/^ws/, "http").replace(/\/ws$/, "/health"))
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => setWorkspaceRoot(j?.workspace))
+          .catch(() => {});
     };
     ws.onclose = () => {
       stopHeartbeat();
@@ -564,6 +676,7 @@ function App() {
           setRunning(false);
           setSessCost(null);
           setRunUsage(null);
+          setLastRun(null); // 用量属于会话，切换/新建时清空
           setCtxInfo(null); // 上下文规模属于会话，切走即清
           setCtxOpen(false);
           // 新会话没有 History 事件回放，必须主动清场，否则正文/排队消息还挂在旧会话上
@@ -583,6 +696,7 @@ function App() {
           setRunning(false);
           setSessCost(null);
           setRunUsage(null);
+          setLastRun(null); // 用量属于会话，切换/新建时清空
           setCtxInfo(null);
           setCtxOpen(false);
           setQueue([]); // 排队消息属于旧会话，切走后不再回放
@@ -736,14 +850,21 @@ function App() {
             break;
           }
           if (pendingReload.current.has(p)) {
-            // Agent 改了干净打开的文件：静默重载
+            // Agent 改完（写盘后）重载干净打开的文件：内容变了才覆盖 model（不动 undo/光标）；
+            // 等待期间用户开始编辑（脏了）→ 转冲突条，不静默吞掉用户输入
             pendingReload.current.delete(p);
             const d = fileDocs.current[p];
             if (d) {
-              d.saved = e.content;
-              d.text = e.content;
-              d.version += 1;
-              setOpenFiles((prev) => prev.map((f) => (f.path === p ? { ...f, dirty: false, truncated: e.truncated, binary: e.binary } : f)));
+              if (d.text !== d.saved) {
+                setConflict(p);
+                break;
+              }
+              if (e.content !== d.saved) {
+                d.saved = e.content;
+                d.text = e.content;
+                d.version += 1;
+                setOpenFiles((prev) => prev.map((f) => (f.path === p ? { ...f, truncated: e.truncated, binary: e.binary } : f)));
+              }
             }
             break;
           }
@@ -762,6 +883,18 @@ function App() {
           setFilesRefresh((n) => n + 1); // 新文件落盘后文件树能看到
           break;
         }
+        case "FileSaveConflict": {
+          // 保存被 daemon 拒绝（磁盘已被 Agent/外部改过）：以磁盘内容为新基准 + 弹冲突条。
+          // 「重新加载」丢弃自己的修改；「保留我的版本」后再次保存即可覆盖（上次冲突已知情）。
+          const p = e.path;
+          const d = fileDocs.current[p];
+          if (d) {
+            d.saved = e.disk;
+            setOpenFiles((prev) => prev.map((f) => (f.path === p ? { ...f, dirty: d.text !== d.saved } : f)));
+          }
+          setConflict(p);
+          break;
+        }
         case "FileBase": {
           const p = e.path;
           if (diffStore.current[p]) {
@@ -777,7 +910,7 @@ function App() {
         case "GitStatus":
           setGitBranch(e.branch || "");
           setGitFiles(Object.fromEntries((e.files || []).map((f) => [f.path, f.code])));
-          setGitScm({ repo: e.repo !== false, branch: e.branch || "", ahead: e.ahead || 0, files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })) });
+          setGitScm({ repo: e.repo !== false, branch: e.branch || "", ahead: e.ahead || 0, files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })), error: e.error });
           break;
         case "GitDone":
           // stage/unstage/commit/push 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
@@ -794,6 +927,11 @@ function App() {
           window.dispatchEvent(
             new CustomEvent("wb-gitmsg", { detail: { ok: e.ok, message: e.message, error: e.error } })
           );
+          break;
+        case "LspStatus":
+        case "LspFromServer":
+          // 编辑器 LSP 桥：状态/服务端消息转给 lsp.ts（内置 LSP 客户端 + 自有 definition 请求都从这里喂）
+          lsp.handleDaemonEvent(e);
           break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
@@ -841,18 +979,16 @@ function App() {
           assistantBuf.current = null;
           pushThinkRow();
           {
-            // 工作台联动：Agent 触及的文件记入「本次改动」；打开中的文件按脏/净决定冲突条或静默重载
+            // 工作台联动：Agent 触及的文件记入「本次改动」；打开中的文件按脏/净决定冲突条或写盘后重载。
+            // 重载必须等 ToolCallResult（写盘已完成）——Started 时读文件拿到的是改前内容，等于没读。
             const wa = (e.args || {}) as Record<string, unknown>;
             const wp = typeof wa.path === "string" ? wa.path.replace(/\\/g, "/") : "";
             if ((e.tool === "edit_file" || e.tool === "write_file") && wp) {
               setRunChanged((prev) => (prev.includes(wp) ? prev : [...prev, wp]));
               if (openFilesRef.current.some((f) => f.path === wp)) {
+                toolPaths.current.set(e.call_id || e.tool, wp); // 旧 daemon 无 call_id：退回按工具名配对
                 const wd = fileDocs.current[wp];
                 if (wd && wd.text !== wd.saved) setConflict(wp);
-                else {
-                  pendingReload.current.add(wp);
-                  sendCmd({ type: "ReadFile", path: wp });
-                }
               }
             }
           }
@@ -914,6 +1050,19 @@ function App() {
           setReasonFull("");
           roundStart.current = Date.now();
           thinkPushed.current = false;
+          {
+            // Agent 写盘已完成：此刻重载才是改后内容。干净的 tab 静默刷新；脏的弹冲突条让用户选。
+            const wp = toolPaths.current.get(e.call_id || e.tool);
+            toolPaths.current.delete(e.call_id || e.tool);
+            if (wp && !e.is_error) {
+              const wd = fileDocs.current[wp];
+              if (wd && wd.text !== wd.saved) setConflict(wp);
+              else {
+                pendingReload.current.add(wp);
+                sendCmd({ type: "ReadFile", path: wp });
+              }
+            }
+          }
           setItems((prev) => {
             const next = [...prev];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -958,7 +1107,21 @@ function App() {
           assistantBuf.current = null;
           setRunning(false);
           setRunUsage(null); // GetSessionCost 回来的会话累计已包含本 run，实时增量清零防重复
+          setLastRun({ duration_ms: e.duration_ms, usage: e.usage, cost_usd: e.cost_usd }); // 输入框上方「最近一次对话」
           markRunEnded();
+          {
+            // 兜底同步：本 run 改过的文件重新读盘（覆盖经 bash 等非 edit_file 改文件的场景——
+            // 那些不走 ToolCallStarted/Result 的 path 记录）。干净的重载，脏的弹冲突条。
+            for (const wp of runChangedRef.current) {
+              if (!openFilesRef.current.some((f) => f.path === wp)) continue;
+              const wd = fileDocs.current[wp];
+              if (wd && wd.text !== wd.saved) setConflict(wp);
+              else {
+                pendingReload.current.add(wp);
+                sendCmd({ type: "ReadFile", path: wp });
+              }
+            }
+          }
           patchLastAssistant((it) => ({
             duration_ms: e.duration_ms,
             usage: e.usage,
@@ -1055,24 +1218,22 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, section, conn]);
 
+  // 发送时把输入框里的内联引用 token（@path:from-to）就地展开成代码块——
+  // 引用长在句子里，多段代码按用户排布的顺序原位展开，不会全部堆到消息末尾
   const composeMessage = (text: string): string => {
-    let out = text;
-    if (chatRefs.length) {
-      const parts = chatRefs.map((r) => {
-        const d = fileDocs.current[r.path];
-        let body = "";
-        if (d && d.text) {
-          const lines = d.text.split("\n");
-          const seg = lines.slice(Math.max(0, r.from - 1), r.to).join("\n");
-          body = seg.length > 4000 ? seg.slice(0, 4000) + "\n...(truncated)" : seg;
-        }
-        return (
-          `[引用] ${r.path}:${r.from}-${r.to}` +
-          (body ? `:\n\`\`\`\n${body}\n\`\`\`` : "（文件未在编辑器打开，请先用 read_file 读取该范围）")
-        );
-      });
-      out = `${out}\n\n${parts.join("\n\n")}`;
-    }
+    let out = text.replace(/@([^\s@:，。；、]+?):(\d+)-(\d+)/g, (_m, p: string, f: string, t: string) => {
+      const d = fileDocs.current[p];
+      let body = "";
+      if (d && d.text) {
+        const lines = d.text.split("\n");
+        const seg = lines.slice(Math.max(0, +f - 1), +t).join("\n");
+        body = seg.length > 4000 ? seg.slice(0, 4000) + "\n...(truncated)" : seg;
+      }
+      return (
+        `[引用] ${p}:${f}-${t}` +
+        (body ? `:\n\`\`\`\n${body}\n\`\`\`` : "（文件未在编辑器打开，请先用 read_file 读取该范围）")
+      );
+    });
     if (!attachments.length) return out;
     const blocks = attachments
       .map((a) => `--- 附件文件: ${a.path}${a.truncated ? "（已截断）" : ""} ---\n${a.content}`)
@@ -1108,6 +1269,37 @@ function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQ, view, conn]);
+
+  // 输入框引用 token → 镜像层卡片（发送时 composeMessage 原样展开，正则保持一致）
+  const INPUT_REF_TOKEN = /@([^\s@:，。；、]+?):(\d+)-(\d+)/g;
+  const mirrorHtml = (text: string): string => {
+    if (!text) return "";
+    const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // 末尾补零宽空格：pre-wrap 下纯换行尾不会塌掉最后一行行高
+    return esc.replace(INPUT_REF_TOKEN, (m) => `<span class="refpill">${m}</span>`) + "\u200b";
+  };
+  // 自适应高度（上限 40% 视口）+ 镜像层滚动/宽度同步（textarea 出滚动条时两边内容宽必须一致，换行才不错位）
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
+    const m = mirrorRef.current;
+    if (m) {
+      m.scrollTop = ta.scrollTop;
+      m.style.width = `${ta.clientWidth}px`;
+    }
+  }, [input, conn]);
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      const m = mirrorRef.current;
+      if (m) m.style.width = `${ta.clientWidth}px`;
+    });
+    ro.observe(ta);
+    return () => ro.disconnect();
+  }, []);
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(e.clipboardData?.files || []).filter((f) =>
@@ -1145,7 +1337,6 @@ function App() {
     setInput("");
     setAttachments([]);
     setPasteImages([]);
-    setChatRefs([]);
   };
 
   // —— 回答中的代码引用可点击：path:114 / path:114-120 / 第 114-120 行 → 打开对应文件跳行 ——
@@ -1175,9 +1366,23 @@ function App() {
       if (line) setReveal({ path: norm, line });
       return;
     }
+    // VS Code 语义：脏缓冲的 tab 关闭后重开，恢复内存里的未保存内容，不被磁盘读回覆盖
+    const keep = fileDocs.current[norm];
+    if (keep && keep.text !== keep.saved) {
+      keep.version += 1;
+      setOpenFiles((prev) => (prev.some((f) => f.path === norm) ? prev : [...prev, { path: norm, truncated: keep.truncated, binary: keep.binary, dirty: true }]));
+      setActiveTab({ kind: "file", path: norm });
+      if (line) setReveal({ path: norm, line });
+      return;
+    }
     pendingOpen.current[norm] = { line };
     sendCmd({ type: "ReadFile", path: norm });
   };
+  // Editor opener：monaco 跳转定义命中未打开的文件（LSP/兜底都一样）→ 走 openFile 开 tab 并跳行
+  useEffect(() => {
+    lsp.setOpenHandler(openFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const openDiff = (path: string) => {
     const norm = path.replace(/\\/g, "/");
     if (!diffTabsRef.current.includes(norm)) diffTabsRef.current = [...diffTabsRef.current, norm];
@@ -1190,6 +1395,13 @@ function App() {
   };
   const closeTab = (kind: "file" | "diff", path: string) => {
     if (kind === "file") {
+      // VS Code 语义：干净的 tab 关闭即释放文本模型（下次打开从磁盘重读）；
+      // 脏缓冲保留在 fileDocs 里，重开时恢复未保存内容
+      const d = fileDocs.current[path];
+      if (d && d.text === d.saved) {
+        delete fileDocs.current[path];
+        disposeFileModel(path);
+      }
       setOpenFiles((prev) => {
         const next = prev.filter((f) => f.path !== path);
         setActiveTab((a) => (a.kind === "file" && a.path === path ? { kind: "file", path: next[next.length - 1]?.path ?? null } : a));
@@ -1209,8 +1421,30 @@ function App() {
   const saveFile = (path: string) => {
     const d = fileDocs.current[path];
     if (!d) return;
-    sendCmd({ type: "WriteWorkspaceFile", path, content: d.text });
+    // 带 base（最后一次看到的磁盘内容）：期间被 Agent 改过时 daemon 拒写并回 FileSaveConflict，
+    // 防止旧缓冲把磁盘上的新内容盖掉
+    sendCmd({ type: "WriteWorkspaceFile", path, content: d.text, base: d.saved });
   };
+  // 全局 Ctrl+S：编辑器聚焦时 monaco 命令已处理并拦截，这里兜住焦点在对话输入框等处时的保存
+  const saveHotkeyRef = useRef<() => void>(() => {});
+  saveHotkeyRef.current = () => {
+    if (activeTab.kind === "file" && activeTab.path) saveFile(activeTab.path);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.altKey) return;
+      if (e.key.toLowerCase() === "s" && !e.shiftKey) {
+        e.preventDefault();
+        saveHotkeyRef.current();
+      } else if (e.key === "`") {
+        e.preventDefault();
+        setTermOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const askSelection = (text: string) => {
     setInput((prev) => (prev ? prev + "\n\n" + text : text));
     setTimeout(() => document.getElementById("input")?.focus(), 30);
@@ -1252,14 +1486,28 @@ function App() {
     sendNow(prompt, prompt, []);
   };
 
-  // 编辑器选区 → 对话引用 chip（去重；文件未打开也接受，Agent 发送时自行 read_file）
+  // 编辑器选区 → 在输入框光标处插入内联引用 token（CodeBuddy 式：引用长在句子里，可多段穿插）。
+  // 发送时 composeMessage 就地把 @path:from-to 展开成代码块；文件未打开也接受，Agent 发送时自行 read_file
   const addChatRef = (path: string, from: number, to: number) => {
     const norm = path.replace(/\\/g, "/");
-    setChatRefs((prev) =>
-      prev.some((r) => r.path === norm && r.from === from && r.to === to) ? prev : [...prev, { path: norm, from, to }]
-    );
-    setChatHidden(false); // chip 在对话栏，收起时自动展开
-    setTimeout(() => document.getElementById("input")?.focus(), 30);
+    const token = `@${norm}:${from}-${to}`;
+    const el = document.getElementById("input") as HTMLTextAreaElement | null;
+    if (el) {
+      const s = el.selectionStart ?? el.value.length;
+      const e = el.selectionEnd ?? s;
+      const before = el.value.slice(0, s);
+      const after = el.value.slice(e);
+      const pad = before && !/\s$/.test(before) ? " " : "";
+      setInput(`${before}${pad}${token} ${after}`);
+      const pos = (before + pad + token + " ").length;
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      }, 30);
+    } else {
+      setInput((prev) => (prev ? `${prev} ${token}` : token));
+    }
+    setChatHidden(false); // 引用在对话栏输入框里，收起时自动展开
   };
 
   const refreshFiles = () => {
@@ -1718,10 +1966,12 @@ function App() {
       </button>
     </>
   );
-  // 顶栏（CodeBuddy 式）：按住可拖动窗口，右侧是面板开关；更右边的最小化/关闭由系统 WCO 绘制
-  const titlebar = (
+  // 顶栏（CodeBuddy 式）：按住可拖动窗口，右侧面板开关；更右边的最小化/关闭由系统 WCO 绘制。
+  // 菜单栏依赖工作区视图的后置声明（toggleRail 等），构造放下面；设置页顶栏不带菜单。
+  const titlebarWith = (menu: React.ReactNode) => (
     <div className="titlebar">
       <span className="tb-title">Y Harness</span>
+      {menu}
       <div className="panel-toggles">{panelToggles}</div>
     </div>
   );
@@ -1729,7 +1979,7 @@ function App() {
     const pages = { models: modelsPage, memory: memoryPage, mcp: mcpPage, skills: skillsPage, general: generalPage };
     return (
       <div className="root">
-        {titlebar}
+        {titlebarWith(null)}
         <div className="settings-screen">
         <aside className="settings-menu">
           <div className="back" onClick={() => setView("chat")}>← 返回工作区</div>
@@ -1781,6 +2031,114 @@ function App() {
     refreshFiles(); // 进代码面板即拉最新目录/git 状态
     setSidebarOpen(true);
   };
+
+  // —— 顶栏菜单栏（VS Code 式）：全部接到既有动作，不新增协议命令 ——
+  // 编辑器相关项经 wb-edit 事件桥进 EditorPane（workbench.tsx）；monaco action id 与右键菜单同一套。
+  const edCmd = (action: string) => () => window.dispatchEvent(new CustomEvent("wb-edit", { detail: { action } }));
+  const menuNewFile = () => {
+    setEditorOpen(true);
+    setSideTab("files");
+    setCodeMode("tree");
+    setSidebarOpen(true);
+    // FileTree 刚挂载时事件监听还没挂上，等一帧再派发
+    setTimeout(() => window.dispatchEvent(new CustomEvent("wb-newfile")), 60);
+  };
+  const cycleTab = (dir: 1 | -1) => {
+    if (!openFiles.length) return;
+    const idx = openFiles.findIndex((f) => f.path === activeTab.path);
+    const next = ((idx < 0 ? 0 : idx + dir) + openFiles.length) % openFiles.length;
+    setActiveTab({ kind: "file", path: openFiles[next].path });
+  };
+  const menus: { label: string; items: MenuEntry[] }[] = [
+    {
+      label: "文件",
+      items: [
+        { label: "新建文件", run: menuNewFile },
+        { label: "打开文件夹…", hide: !window.myharness, run: () => void pickProject() },
+        "sep",
+        {
+          label: "保存",
+          accel: "Ctrl+S",
+          disabled: !(activeTab.kind === "file" && activeTab.path),
+          run: () => {
+            if (activeTab.kind === "file" && activeTab.path) saveFile(activeTab.path);
+          },
+        },
+        { label: "全部保存", disabled: !openFiles.some((f) => f.dirty), run: () => openFiles.filter((f) => f.dirty).forEach((f) => saveFile(f.path)) },
+        { label: "关闭标签页", disabled: !activeTab.path, run: () => activeTab.path && closeTab(activeTab.kind, activeTab.path) },
+        {
+          label: "关闭全部标签页",
+          disabled: !openFiles.length && !diffTabsRef.current.length,
+          run: () => {
+            diffTabsRef.current.slice().forEach((p) => closeTab("diff", p));
+            openFiles.map((f) => f.path).forEach((p) => closeTab("file", p));
+          },
+        },
+        "sep",
+        { label: "设置", run: () => setView("settings") },
+      ],
+    },
+    {
+      label: "编辑",
+      items: [
+        { label: "撤销", accel: "Ctrl+Z", run: edCmd("undo") },
+        { label: "重做", accel: "Ctrl+Y", run: edCmd("redo") },
+        "sep",
+        { label: "剪切", accel: "Ctrl+X", run: edCmd("editor.action.clipboardCutAction") },
+        { label: "复制", accel: "Ctrl+C", run: edCmd("editor.action.clipboardCopyAction") },
+        { label: "粘贴", accel: "Ctrl+V", run: edCmd("editor.action.clipboardPasteAction") },
+        { label: "全选", accel: "Ctrl+A", run: edCmd("editor.action.selectAll") },
+        "sep",
+        { label: "查找", accel: "Ctrl+F", run: edCmd("actions.find") },
+        { label: "替换", accel: "Ctrl+H", run: edCmd("editor.action.startFindReplaceAction") },
+      ],
+    },
+    {
+      label: "查看",
+      items: [
+        { label: "会话", checked: railActive === "sessions", run: () => toggleRail("sessions") },
+        { label: "资源管理器", checked: railActive === "tree", run: () => toggleRail("tree") },
+        { label: "搜索", checked: railActive === "search", run: () => toggleRail("search") },
+        { label: "源代码管理", checked: railActive === "git", run: () => toggleRail("git") },
+        "sep",
+        { label: "最小地图", checked: minimapOn, run: toggleMinimap },
+        { label: "自动换行", checked: wrapOn, run: toggleWrap },
+        "sep",
+        { label: "终端", accel: "Ctrl+`", checked: termOpen, run: () => setTermOpen((o) => !o) },
+        {
+          label: "Markdown 预览",
+          accel: "Ctrl+Shift+V",
+          hide: !(activeTab.kind === "file" && activeTab.path && /\.(md|markdown)$/i.test(activeTab.path)),
+          run: edCmd("mdPreview"),
+        },
+      ],
+    },
+    {
+      label: "转到",
+      items: [
+        { label: "转到行…", accel: "Ctrl+G", run: edCmd("editor.action.gotoLine") },
+        { label: "转到定义", accel: "F12", run: edCmd("editor.action.revealDefinition") },
+        { label: "下一个问题", accel: "F8", run: edCmd("nextDiag") },
+        "sep",
+        { label: "下一个标签页", accel: "Ctrl+PgDn", run: () => cycleTab(1) },
+        { label: "上一个标签页", accel: "Ctrl+PgUp", run: () => cycleTab(-1) },
+      ],
+    },
+    {
+      label: "终端",
+      items: [{ label: termOpen ? "关闭终端" : "新建终端", run: () => setTermOpen(true) }],
+    },
+    {
+      label: "帮助",
+      items: [
+        {
+          label: "关于 Y Harness",
+          run: () => addItem({ kind: "notice", text: `Y Harness 桌面端 · daemon ${settings.server_version || "…"} · Monaco（VS Code 内核）· 本地优先` }),
+        },
+      ],
+    },
+  ];
+  const titlebar = titlebarWith(<MenuBar menus={menus} />);
   return (
     <div className="root">
       {titlebar}
@@ -1832,6 +2190,7 @@ function App() {
           <FileTree
             mode={codeMode}
             listing={dirListing}
+            activeFile={activeTab.kind === "file" ? activeTab.path : null}
             searchRes={searchRes}
             changed={runChanged}
             gitFiles={gitFiles}
@@ -2091,28 +2450,49 @@ function App() {
                 })
               : null;
 
-          // 手动分组模式：自定义分组 + 拖拽/菜单移动 + 未分组区
+          // 手动分组模式：卡片式分组，整卡都是放置区（含会话行与空组提示），
+          // 未分组卡同样接收拖放，会话可拖回未分组
           if (groupBy === "group") {
             const grouped = filtered.filter((s) => s.group);
             const ungrouped = filtered.filter((s) => !s.group);
-            const groupBlock = (gname: string | null, groupItems: SessionInfo[], hint?: string) => (
-              <div key={gname || "__ungrouped__"}>
-                {gname ? (
+            const dropKey = (gname: string | null) => gname || "__ungrouped__";
+            const move_to = (gname: string | null) => (e: React.DragEvent) => {
+              e.preventDefault();
+              const sid = e.dataTransfer.getData("text/session-id") || dragSid;
+              if (sid) sendCmd({ type: "SetSessionGroup", session_id: sid, group: gname || "" });
+              setDropTarget(null);
+              setDragSid(null);
+            };
+            const groupBlock = (gname: string | null, groupItems: SessionInfo[]) => {
+              const dk = dropKey(gname);
+              const collapsed = !!collapsedGroups["group:" + dk];
+              return (
+                <div
+                  key={dk}
+                  className={
+                    "sgroup" +
+                    (gname ? "" : " ungrouped") +
+                    (dropTarget === dk ? " drop" : "") +
+                    (collapsed ? " collapsed" : "") +
+                    (dragSid ? " drag-active" : "")
+                  }
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDropTarget(dk);
+                  }}
+                  onDragLeave={(e) => {
+                    // 只在真正离卡（relatedTarget 不在卡内）时取消高亮，避免子元素间抖动
+                    if (!e.currentTarget.contains(e.relatedTarget as Node))
+                      setDropTarget((t) => (t === dk ? null : t));
+                  }}
+                  onDrop={move_to(gname)}
+                >
                   <div
-                    className={"ghead" + (dropTarget === gname ? " drop" : "")}
-                    onClick={() => setCollapsedGroups((c) => ({ ...c, ["group:" + gname]: !c["group:" + gname] }))}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDropTarget(gname);
-                    }}
-                    onDragLeave={() => setDropTarget((t) => (t === gname ? null : t))}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const sid = e.dataTransfer.getData("text/session-id");
-                      if (sid) sendCmd({ type: "SetSessionGroup", session_id: sid, group: gname });
-                      setDropTarget(null);
-                    }}
+                    className="sgroup-h"
+                    onClick={() => setCollapsedGroups((c) => ({ ...c, ["group:" + dk]: !c["group:" + dk] }))}
                   >
+                    <span className="gcaret">{collapsed ? "▸" : "▾"}</span>
                     {groupRenaming?.old === gname ? (
                       <input
                         className="ren"
@@ -2130,45 +2510,47 @@ function App() {
                         }}
                       />
                     ) : (
-                      <span className="glabel">
-                        {collapsedGroups["group:" + gname] ? "▸" : "▾"} # {gname}
-                      </span>
+                      <span className="gname">{gname || "未分组"}</span>
                     )}
+                    <span className="gcnt">{groupItems.length}</span>
                     <span className="gact" onClick={(e) => e.stopPropagation()}>
-                      {groupItems.length}
-                      <button className="icon" title="重命名分组" onClick={() => setGroupRenaming({ old: gname, value: gname })}>
-                        <Icon name="edit" size={11} />
-                      </button>
-                      <button
-                        className="icon danger"
-                        title="删除分组（组内会话移至未分组）"
-                        onClick={() => sendCmd({ type: "DeleteSessionGroup", name: gname })}
-                      >
-                        <Icon name="x" size={11} />
-                      </button>
+                      {gname && (
+                        <>
+                          <button className="icon" title="重命名分组" onClick={() => setGroupRenaming({ old: gname, value: gname })}>
+                            <Icon name="edit" size={11} />
+                          </button>
+                          <button
+                            className="icon danger"
+                            title="删除分组（组内会话移至未分组）"
+                            onClick={() => sendCmd({ type: "DeleteSessionGroup", name: gname })}
+                          >
+                            <Icon name="x" size={11} />
+                          </button>
+                        </>
+                      )}
                     </span>
                   </div>
-                ) : (
-                  <div className="ghead" style={{ cursor: "default" }}>
-                    <span>未分组</span>
-                    <span>{groupItems.length}</span>
-                  </div>
-                )}
-                {(!gname || !collapsedGroups["group:" + gname]) &&
-                  (groupItems.length ? (
-                    groupItems.map(sessionRow)
-                  ) : (
-                    <div className="drop-hint">{hint || "拖拽会话到这里"}</div>
-                  ))}
-              </div>
-            );
+                  {!collapsed && (
+                    <div className="sgroup-body">
+                      {groupItems.length ? (
+                        groupItems.map(sessionRow)
+                      ) : (
+                        <div className="drop-hint">
+                          {dragSid ? `松开移动到「${gname || "未分组"}」` : gname ? "拖拽会话到这里" : "暂无会话"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            };
             return (
               <>
                 {provisionalRow}
                 {sessionGroups.map((gname) =>
-                  groupBlock(gname, grouped.filter((s) => s.group === gname), "拖拽会话到这里")
+                  groupBlock(gname, grouped.filter((s) => s.group === gname))
                 )}
-                {groupBlock(null, ungrouped, "暂无会话")}
+                {groupBlock(null, ungrouped)}
               </>
             );
           }
@@ -2241,6 +2623,8 @@ function App() {
                 setCodeMode("tree");
                 setSidebarOpen(true);
               }}
+              minimap={minimapOn}
+              wordWrap={wrapOn}
             />
             {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
           </div>
@@ -2272,12 +2656,6 @@ function App() {
           <span className="meta">
             {conn} · {shortModel(currentModel)}
             {running ? ` · ⏱ ${fmtClock(elapsed)}` : ""}
-            {sessCost || runUsage
-              ? ` · 会话 ↑${fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓${fmtTok(
-                  (sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0)
-                )} tok`
-              : ""}
-            {sessCost?.cost_usd != null ? ` · ${fmtCost(sessCost.cost_usd)}` : ""}
           </span>
           )}
           {(() => {
@@ -2299,6 +2677,21 @@ function App() {
               </button>
             );
           })()}
+          {/* CodeBuddy 式：对话历史 / 新建对话 常驻对话栏头部 */}
+          <button
+            className="head-ic"
+            title="对话历史（打开会话列表）"
+            onClick={() => {
+              setSideTab("sessions");
+              setShowProjects(false);
+              setSidebarOpen(true);
+            }}
+          >
+            <Icon name="history" size={14} />
+          </button>
+          <button className="head-ic" title="新建对话" onClick={newSession}>
+            <Icon name="plus" size={14} />
+          </button>
         </header>
         {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
           <div className="ctx-pop" ref={ctxPopRef}>
@@ -2427,7 +2820,7 @@ function App() {
                             title={`${r.path}:${r.from}-${r.to}（已随消息发给模型），点击跳转`}
                             onClick={() => openFile(r.path, r.from)}
                           >
-                            {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
+                            <Icon name="file" size={11} /> {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
                           </span>
                         ))}
                       </div>
@@ -2551,31 +2944,29 @@ function App() {
             </button>
           </div>
         )}
+        {/* 用量条（CodeBuddy 式）：运行中实时刷新；结束后冻结为最近一次对话的耗时与 token；尾部会话累计 */}
+        {(running || lastRun || sessCost) && (
+          <div className="usage-strip">
+            {running ? (
+              <span className="us-live" title="本次对话进行中">
+                <Icon name="refresh" size={11} /> {fmtClock(elapsed)} · ↑{fmtTok(runUsage?.input_tokens || 0)} ↓{fmtTok(runUsage?.output_tokens || 0)} tok
+              </span>
+            ) : lastRun ? (
+              <span title="最近一次对话">
+                最近 <Icon name="history" size={11} /> {fmtClock((lastRun.duration_ms || 0) / 1000)}
+                {lastRun.usage ? ` · ↑${fmtTok(lastRun.usage.input_tokens)} ↓${fmtTok(lastRun.usage.output_tokens)} tok` : ""}
+              </span>
+            ) : null}
+            {(sessCost || runUsage) && (
+              <span title="当前会话累计（含进行中）">
+                会话 ↑{fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓
+                {fmtTok((sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0))} tok
+              </span>
+            )}
+            {sessCost?.cost_usd != null && <span>{fmtCost(sessCost.cost_usd)}</span>}
+          </div>
+        )}
         <div className="composer">
-          {chatRefs.length > 0 && (
-            <div className="atchips">
-              {chatRefs.map((r, i) => (
-                <span
-                  key={i}
-                  className="chip refchip"
-                  title={`点击跳转到 ${r.path}:${r.from}`}
-                  onClick={() => openFile(r.path, r.from)}
-                >
-                  <Icon name="download" size={11} />
-                  {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
-                  <span
-                    className="chipx"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setChatRefs((prev) => prev.filter((_, j) => j !== i));
-                    }}
-                  >
-                    ×
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
           {pasteImages.length > 0 && (
             <div className="atchips">
               {pasteImages.map((p, i) => (
@@ -2607,27 +2998,35 @@ function App() {
               />
             </div>
           )}
-          <textarea
-            id="input"
-            rows={2}
-            value={input}
-            placeholder={
-              running
-                ? "继续输入以排队后续修改…（Enter 入队，当前任务结束后自动发送）"
-                : conn === "open"
-                  ? "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…"
-                  : "等待连接…"
-            }
-            onChange={(e) => setInput(e.target.value)}
-            onPaste={onPaste}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
+          <div className="input-stack">
+            <div className="input-mirror" ref={mirrorRef} aria-hidden dangerouslySetInnerHTML={{ __html: mirrorHtml(input) }} />
+            <textarea
+              id="input"
+              ref={inputRef}
+              rows={2}
+              value={input}
+              placeholder={
+                running
+                  ? "继续输入以排队后续修改…（Enter 入队，当前任务结束后自动发送）"
+                  : conn === "open"
+                    ? "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…"
+                    : "等待连接…"
               }
-            }}
-            disabled={conn !== "open"}
-          />
+              onChange={(e) => setInput(e.target.value)}
+              onPaste={onPaste}
+              onScroll={(e) => {
+                const m = mirrorRef.current;
+                if (m) m.scrollTop = e.currentTarget.scrollTop;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              disabled={conn !== "open"}
+            />
+          </div>
           <div className={"controls" + (fileMode ? " compact" : "")}>
             <button className="ctl" title="添加工作区文件为附件" onClick={() => setShowAttach((s) => !s)}>＋</button>
             <div className="pdrop" ref={permDropRef}>

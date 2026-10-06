@@ -203,6 +203,29 @@ export const ICON_PATHS = {
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  locate: (
+    <>
+      <line x1="2" y1="12" x2="5" y2="12" />
+      <line x1="19" y1="12" x2="22" y2="12" />
+      <line x1="12" y1="2" x2="12" y2="5" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="2.5" />
+    </>
+  ),
+  plus: (
+    <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M3 3v5h5" />
+      <path d="M3.05 13a9 9 0 1 0 .5-5L3 8" />
+      <path d="M12 7v5l4 2" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof ICON_PATHS;

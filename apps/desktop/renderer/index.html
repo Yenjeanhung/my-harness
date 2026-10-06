@@ -2,8 +2,13 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ws://127.0.0.1:* ws://localhost:*" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*" />
     <link rel="stylesheet" href="bundle.css" />
+    <!-- chunk-css-start -->
+    <link rel="stylesheet" href="./chunk-MN5EVZ4B.css" />
+    <link rel="stylesheet" href="./chunk-N2FMYLIC.css" />
+    <link rel="stylesheet" href="./chunk-YIEMSM52.css" />
+    <!-- chunk-css-end -->
     <title>Y Harness</title>
     <style>
       :root { color-scheme: dark; }
@@ -36,6 +41,29 @@
       }
       .tb-title { font-size: 12.5px; font-weight: 600; color: #8b949e; }
       .titlebar .panel-toggles { margin-left: auto; -webkit-app-region: no-drag; }
+      /* —— 顶栏菜单栏（VS Code 式）：menubar 不参与拖拽，弹层 fixed 挂窗口坐标 —— */
+      .menubar { display: flex; align-items: center; gap: 1px; -webkit-app-region: no-drag; margin-left: 6px; }
+      .mb-item {
+        height: 24px; padding: 2px 9px; background: transparent; border: none; border-radius: 6px;
+        color: #9aa4b2; font-size: 12.5px; cursor: pointer;
+      }
+      .mb-item:hover, .mb-item.on { color: #e6edf3; background: #21262d; }
+      .mb-pop {
+        position: fixed; z-index: 95; min-width: 240px; padding: 5px;
+        background: #161921; border: 1px solid #30363d; border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55);
+        -webkit-app-region: no-drag;
+      }
+      .mb-row {
+        display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 7px;
+        color: #c9d1d9; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+      }
+      .mb-row:hover { background: #1f6feb33; color: #fff; }
+      .mb-row.dis { opacity: 0.45; cursor: default; }
+      .mb-row.dis:hover { background: transparent; color: #c9d1d9; }
+      .mb-check { width: 14px; flex: none; color: #3fb950; font-size: 11.5px; }
+      .mb-accel { margin-left: auto; padding-left: 22px; color: #6e7681; font-size: 11px; }
+      .mb-sep { height: 1px; background: #262a33; margin: 5px 8px; }
       .app { display: flex; flex: 1; min-height: 0; }
       aside {
         width: 272px; min-width: 272px; max-width: 272px;
@@ -102,9 +130,35 @@
         position: sticky; top: 0; background: #0f1218;
       }
       aside .ghead:hover { color: #d7dae0; }
-      .ghead .glabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ghead .gact { display: flex; align-items: center; gap: 2px; }
-      .ghead.drop { background: #111a27; outline: 1px dashed #1f6feb; outline-offset: -2px; border-radius: 6px; }
+
+      /* —— 手动分组：扁平原生风（对标 VS Code 侧栏）——
+         不做卡片底色：组间用 1px 分隔线 + 节标题，组内会话缩进并挂 1px 导轨线表明从属 —— */
+      .sgroup { position: relative; padding: 2px 0 4px; transition: background .12s; }
+      .sgroup + .sgroup { border-top: 1px solid #1b212c; margin-top: 3px; }
+      .sgroup:last-child { margin-bottom: 8px; }
+      /* 拖放反馈：整组淡蓝底 + 标题变蓝 + 导轨线变蓝，克制不抢眼 */
+      .sgroup.drop { background: rgba(31,111,235,.06); }
+      .sgroup.drop .gname, .sgroup.drop .gcnt { color: #79c0ff; }
+      .sgroup.drop .sgroup-body::before { background: #1f6feb; }
+      .sgroup-h {
+        display: flex; align-items: center; gap: 5px;
+        padding: 6px 14px 4px; cursor: pointer; user-select: none;
+        font-size: 11.5px; color: #7d8590;
+      }
+      .sgroup-h:hover { color: #c9d1d9; }
+      .gcaret { flex: none; width: 10px; font-size: 9px; color: #6e7681; }
+      .sgroup .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: #9aa4b2; }
+      .sgroup-h:hover .gname { color: inherit; }
+      .sgroup .ren { flex: 1; min-width: 0; width: auto; }
+      .sgroup .gact { flex: none; display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity .12s; }
+      .sgroup-h:hover .gact { opacity: 1; }
+      .gcnt { flex: none; font-size: 10.5px; color: #6e7681; font-variant-numeric: tabular-nums; }
+      /* 组内导轨线：会话区缩进 + 左侧 1px 竖线，替代卡片表达从属关系 */
+      .sgroup-body { position: relative; margin: 0 8px 0 20px; padding: 0 0 2px; }
+      .sgroup-body::before { content: ""; position: absolute; left: 0; top: 1px; bottom: 3px; width: 1px; background: #1d232e; }
+      .sgroup-body .sess { padding: 6px 8px; border-radius: 6px; }
+      .sgroup-body .sess:hover { background: #161b22; }
+      .sgroup-body .sess.active { background: #111a27; }
 
       /* —— 项目 tab（侧栏第三个 tab） —— */
       .proj-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 10px; }
@@ -123,9 +177,18 @@
       }
       .proj-pane .sess .stitle { display: flex; align-items: center; gap: 6px; }
       .proj-pane .proj-hint { margin: auto 14px 4px; padding-top: 10px; font-size: 11px; color: #6e7681; line-height: 1.5; }
-      .drop-hint { margin: 6px 14px; padding: 9px; border: 1px dashed #30363d; border-radius: 8px; text-align: center; color: #7d8590; font-size: 11.5px; }
+      .drop-hint {
+        margin: 2px 0 0; padding: 10px 8px;
+        border: 1px dashed #262d3a; border-radius: 7px;
+        text-align: center; color: #6e7681; font-size: 11.5px;
+        transition: border-color .12s, color .12s, background .12s;
+      }
+      /* 拖拽进行中：所有空组提示亮起；悬停卡内的提示转为实心可放置态 */
+      .sgroup.drag-active .drop-hint { border-color: #31435f; color: #8b949e; }
+      .sgroup.drop .drop-hint { border-style: solid; border-color: #1f6feb; color: #79c0ff; background: rgba(31,111,235,.09); }
       .moveselect { background: #0d1017; color: #d7dae0; border: 1px solid #1f6feb; border-radius: 4px; font-size: 11.5px; padding: 2px 4px; outline: none; }
       aside .sess[draggable="true"] { cursor: grab; }
+      aside .sess.dragging { opacity: .4; }
       .ghead .ren { flex: 1; min-width: 0; }
       aside .sinfo { min-width: 0; }
       aside .stitle { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -230,6 +293,16 @@
       }
       .ctx-menu .ai-item svg { color: #79c0ff; }
       .ai-item .ft-icon, .ai-item svg { color: #d2a8ff; flex: none; }
+      /* monaco 编辑器右键菜单（0.57 新菜单实现）：主题未定义 menu.* 变量时底色透明，
+         菜单底下会透出编辑器文字——CSS 兜底与 yharness-dark 主题里的 menu.* 同值 */
+      .context-view .monaco-menu {
+        background: #161921; color: #d7dae0;
+        border: 1px solid #30363d; border-radius: 8px;
+        box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      }
+      .context-view .monaco-menu .monaco-menu-option { color: #c9d1d9; }
+      .context-view .monaco-menu .monaco-menu-option:hover,
+      .context-view .monaco-menu .monaco-menu-option.active { background: #1f2733; color: #fff; }
       .ed-tool:disabled { opacity: 0.4; cursor: default; }
       .ed-conflict {
         display: flex; align-items: center; gap: 10px; padding: 6px 12px; flex: none;
@@ -313,8 +386,11 @@
       .ft-row {
         display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: pointer;
         color: #c9d1d9; font-size: 12.5px; white-space: nowrap; position: relative;
+        transition: background .4s ease;
       }
       .ft-row:hover { background: #1c2230; }
+      /* 「定位文件」命中行：加类淡入、1.6s 后移除淡出 */
+      .ft-row.flash { background: #1f3a5f; }
       .ft-row .ft-chev { width: 10px; color: #7d8590; flex: none; font-size: 10px; }
       .ft-row .ft-icon { color: #7d8590; display: inline-flex; flex: none; }
       .ft-row .ft-name { overflow: hidden; text-overflow: ellipsis; }
@@ -690,6 +766,21 @@
         white-space: nowrap; font-family: Consolas, monospace;
       }
       .ctx-chip:hover, .ctx-chip.on { color: #c9d1d9; background: #1c2230; }
+      /* 对话栏头部：对话历史 / 新建对话（CodeBuddy 式） */
+      .head-ic {
+        flex: none; display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; margin-left: 6px;
+        background: transparent; border: none; border-radius: 7px;
+        color: #7d8590; cursor: pointer;
+      }
+      .head-ic:hover { color: #d7dae0; background: #1c2230; }
+      /* 输入框上方用量条：最近一次对话耗时/token + 会话累计 */
+      .usage-strip {
+        display: flex; align-items: center; gap: 14px;
+        padding: 3px 14px 0; font-size: 11.5px; color: #7d8590; white-space: nowrap; overflow: hidden;
+      }
+      .usage-strip span { display: inline-flex; align-items: center; gap: 4px; font-family: Consolas, monospace; }
+      .usage-strip .us-live { color: #79c0ff; }
       .ctx-pop {
         position: absolute; top: 44px; right: 14px; z-index: 55; width: 320px;
         background: #161921; border: 1px solid #30363d; border-radius: 12px;
@@ -742,8 +833,51 @@
       }
       .composer textarea {
         width: 100%; background: transparent; color: #d7dae0; border: none; outline: none;
-        font-size: 14px; resize: none; line-height: 1.5;
+        font-size: 14px; resize: none; line-height: 1.5; padding: 2px; display: block;
       }
+      /* 输入框引用卡片镜像层：垫在 textarea 底下，文本透明只留卡片底色（CodeBuddy 式引用卡）。
+         与 textarea 同字体/行高/内边距；宽度由 JS 同步为 textarea clientWidth（滚动条出现时换行仍一致） */
+      .input-stack { position: relative; display: block; }
+      .input-mirror {
+        position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: hidden;
+        font-size: 14px; line-height: 1.5; padding: 2px; color: transparent;
+        white-space: pre-wrap; word-wrap: break-word;
+      }
+      .refpill { background: #132a45; border-radius: 6px; box-shadow: inset 0 0 0 1px #1f4d7a; }
+      /* —— 编辑器右键菜单（自绘，CodeBuddy 式：文本 + 快捷键右对齐 + 分组分隔线） —— */
+      .edmenu {
+        position: fixed; z-index: 96; min-width: 236px; max-height: 70vh; overflow-y: auto;
+        background: #1c2128; border: 1px solid #30363d; border-radius: 10px; padding: 5px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .edmenu .mi {
+        display: flex; align-items: center; justify-content: space-between; gap: 18px;
+        padding: 5px 10px; border-radius: 6px; font-size: 12.5px; color: #c9d1d9;
+        cursor: default; white-space: nowrap;
+      }
+      .edmenu .mi.on { background: #242b36; }
+      .edmenu .mi.dis { color: #57606a; }
+      .edmenu .mi.dis.on { background: transparent; }
+      .edmenu .ml { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+      .edmenu .kb { color: #6e7681; font-size: 11px; font-family: Consolas, monospace; flex: none; }
+      .edmenu .msep { height: 1px; background: #30363d; margin: 5px 6px; }
+      /* —— 引用查找结果面板（查找所有引用 / 转到引用） —— */
+      .refpanel {
+        position: fixed; z-index: 95; width: min(560px, 90vw); max-height: 50vh;
+        display: flex; flex-direction: column;
+        background: #1c2128; border: 1px solid #30363d; border-radius: 10px; overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .refpanel .rp-head { padding: 8px 12px; font-size: 12px; color: #8b949e; border-bottom: 1px solid #262a33; }
+      .refpanel .rp-head b { color: #79c0ff; }
+      .refpanel .rp-list { overflow-y: auto; padding: 4px; }
+      .refpanel .rp-row {
+        display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+      }
+      .refpanel .rp-row:hover { background: #242b36; }
+      .refpanel .rp-loc { color: #79c0ff; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; flex: none; }
+      .refpanel .rp-text { color: #8b949e; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .refpanel .rp-empty { padding: 14px 12px; color: #6e7681; font-size: 12px; }
       .controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: nowrap; min-width: 0; }
       .controls.compact { gap: 4px; margin-top: 4px; }
       .controls.compact .ctl { padding: 3px 6px; font-size: 11.5px; }
@@ -901,6 +1035,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="./bundle.js"></script>
+    <script type="module" src="./bundle.js"></script>
   </body>
 </html>

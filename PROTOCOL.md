@@ -69,11 +69,11 @@
 | `RemoveMcpServer` | `name` | `Notice` + `McpList`（热断开，注册的工具即时移除） |
 | `ListSkills` | — | `SkillList` |
 | `ReadWorkspaceFile` | `path`（限工作区内，50K 截断） | `WorkspaceFile`（附件场景） |
-| `LintCheck` | `path`, `text`（编辑器全文）, `req`（回显配对） | `LintResult{path, req, diagnostics[{line, col, end_line, end_col, message, severity}]}`（py=compile 语法 + pyflakes 可选；json=loads；编辑器 700ms 防抖） |
-| `GotoDef` | `name`（标识符）, `path`（来源文件）, `req` | `GotoDefResult{req, name, file, line}`（全工作区搜 def/class，同文件优先；变量退回本文件赋值行；无 LSP 的轻量跳转） |
+| `LintCheck` | `path`, `text`（编辑器全文）, `req`（回显配对） | `LintResult{path, req, diagnostics[{line, col, end_line, end_col, message, severity}]}`（py=compile 语法 + pyflakes 可选；json=loads；编辑器 700ms 防抖）。M6 起 python 且 LSP 在跑时编辑器不再发本命令（诊断走 LSP publishDiagnostics），其余语言/无 LSP 时仍作兜底 |
+| `GotoDef` | `name`（标识符）, `path`（来源文件）, `req` | `GotoDefResult{req, name, file, line}`（全工作区搜 def/class，同文件优先；变量退回本文件赋值行）。M6 起 python 的 LSP definition 在跑时优先走 LSP，本命令为无 LSP 兜底 |
 | `ListDir` | `path`（空=根；过滤 .git/node_modules 等 + .gitignore） | `DirListing{path, entries[{name,kind,size,mtime}]}` |
 | `ReadFile` | `path` | `FileContent{path, content, binary, truncated, size}`（编辑器场景：二进制探测 + 1MB 上限） |
-| `WriteWorkspaceFile` | `path`, `content` | `FileSaved{path, size}` |
+| `WriteWorkspaceFile` | `path`, `content`, `base?`（编辑器最后一次看到的磁盘内容） | `FileSaved{path, size}`；带 `base` 且与当前磁盘不一致 → **拒写**，回 `FileSaveConflict{path, disk}`（附磁盘当前内容），由用户选重新加载/保留版本——防旧缓冲静默覆盖 Agent 改动 |
 | `CreateEntry` | `path`, `kind: file/dir` | `Notice` |
 | `MoveEntry` | `path`, `to` | `Notice` |
 | `DeleteEntry` | `path`（移入 `.my-harness/trash/`，可找回） | `Notice` |
@@ -84,6 +84,9 @@
 | `GitCommit` | `message`, `all?`（无暂存时 `-a` 全部提交） | `GitDone{op:"commit", ok, message}` + 自动回发 `GitStatus` |
 | `GitDiff` | `path` | `GitDiff{path, diff}` |
 | `GitFileBase` | `path` | `FileBase{path, content}`（git index 版本；未跟踪为空串，diff 视图的「改前」侧） |
+| `LspStart` | `language` | `LspStatus{language, status:"running", root_uri, detail}`（daemon 按探测顺序拉起语言服务器子进程，`settings.json` 的 `lsp.<语言>.command` 可覆盖；已在跑则重启——LSP initialize 每进程只允许一次，页面重载必须拿新会话）；找不到服务器 → `status:"error", detail` |
+| `LspToServer` | `language`, `message`（LSP JSON-RPC 消息原样） | 消息经 daemon 哑管道写进服务器 stdin；服务端回包以 `LspFromServer{language, message}` 事件流回 |
+| `LspStop` | `language` | `LspStatus{status:"stopped"}` |
 | `UploadImage` | `data_url`（image/png\|jpeg\|gif\|webp，≤10MB） | `ImageSaved`（落盘 workspace/attachments/ 并回传 base64） |
 | `RespondPermission` | `request_id`, `answer`: `yes`/`always`/`no` | —（解除挂起的审批 future） |
 | `Ping` | — | `Pong` |
@@ -116,6 +119,8 @@
 | `ImageSaved` / `WorkspaceFile` | `path`, `media_type`, `data` / `path`, `content`, `truncated` | 附件就绪 |
 | `DirListing` / `FileContent` / `FileSaved` / `FileBase` | 见对应命令 | 工作台文件事件 |
 | `SearchResult` / `GitStatus` / `GitDiff` | 见对应命令 | 工作台搜索与 Git 事件 |
+| `LspStatus` | `language`, `status`: starting/running/stopped/error, `root_uri?`, `detail?` | 编辑器语言服务器生命周期；running 后客户端发 LSP `initialize`（rootUri 由 daemon 以工作区兜底，daemon spawn 时 cwd=工作区） |
+| `LspFromServer` | `language`, `message` | 语言服务器的 JSON-RPC 原样转发（通知/请求/响应都走这里） |
 | `MemoryList` / `MemoryFileContent` / `McpList` / `SkillList` / `SessionExported` / `Pong` | — | 对应命令的回复 |
 
 费用说明：token 用量真实记录（每轮模型返回的 usage，子代理共享累计）；`cost_usd` 按

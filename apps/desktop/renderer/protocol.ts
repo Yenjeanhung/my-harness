@@ -168,6 +168,7 @@ export type WsEvent =
   | { type: "DirListing"; path: string; entries: { name: string; kind: "file" | "dir"; size: number; mtime: number }[] }
   | { type: "FileContent"; path: string; content: string; binary: boolean; truncated: boolean; size: number }
   | { type: "FileSaved"; path: string; size: number }
+  | { type: "FileSaveConflict"; path: string; disk: string } // 保存被拒：磁盘已被 Agent/外部改过，附当前内容
   | { type: "FileBase"; path: string; content: string }
   | {
       type: "SearchResult";
@@ -177,10 +178,13 @@ export type WsEvent =
       total: number;
       truncated: boolean;
     }
-  | { type: "GitStatus"; repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy?: string }[] }
+  | { type: "GitStatus"; repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy?: string }[]; error?: string } // error=git 不可用/执行失败的原因（repo:false 且无 error 才是「真·不是仓库」）
   | { type: "GitDiff"; path: string; diff: string }
   | { type: "GitDone"; op: "stage" | "unstage" | "commit" | "push"; ok: boolean; message: string }
   | { type: "GitCommitMsg"; ok: boolean; message?: string; error?: string }
+  // —— 编辑器 LSP 桥（daemon 是哑管道：JSON-RPC 原样转发语言服务器子进程）——
+  | { type: "LspStatus"; language: string; status: "starting" | "running" | "stopped" | "error"; root_uri?: string; detail?: string }
+  | { type: "LspFromServer"; language: string; message: unknown }
   | { type: "ToolCallResult"; call_id?: string; tool: string; is_error?: boolean; chars?: number; preview?: string }
   | { type: "Notice"; text: string }
   | ({ type: "PermissionRequest" } & PermissionRequest)
@@ -238,7 +242,7 @@ export type WsCommand =
   // —— 工作台（IDE）——
   | { type: "ListDir"; path: string }
   | { type: "ReadFile"; path: string }
-  | { type: "WriteWorkspaceFile"; path: string; content: string }
+  | { type: "WriteWorkspaceFile"; path: string; content: string; base?: string }
   | { type: "CreateEntry"; path: string; kind: "file" | "dir" }
   | { type: "MoveEntry"; path: string; to: string }
   | { type: "DeleteEntry"; path: string }
@@ -252,6 +256,10 @@ export type WsCommand =
   | { type: "GitGenMsg" }
   | { type: "GitPush" }
   | { type: "GitFileBase"; path: string }
+  // —— 编辑器 LSP 桥 ——
+  | { type: "LspStart"; language: string }
+  | { type: "LspToServer"; language: string; message: unknown }
+  | { type: "LspStop"; language: string }
   | { type: "RenameSession"; session_id: string; title: string }
   | { type: "DeleteSession"; session_id: string }
   | { type: "PinSession"; session_id: string; pinned: boolean }

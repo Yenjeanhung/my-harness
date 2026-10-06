@@ -48,10 +48,57 @@ from ..memory.tools import build_memory_tools
 from ..memory.vault import MemoryVault
 from ..observability.cost import cost_of, session_costs
 from ..security.permissions import PermissionEngine
+from ..server.lsp import LspManager
 from ..tools.base import ToolContext, ToolRegistry
 from ..tools.builtin import build_default_registry
 from ..tools.skills import SkillRegistry, build_skill_tools
 from ..tools.mcp_client import connect_all
+
+# 「git 不在 PATH 上」≠「目录不是 git 仓库」：daemon 可能被不带完整环境的进程拉起
+# （便携包/老版主进程/手工启动），子进程继承的 PATH 可能没有 git。scm 相关命令一律用
+# 这里定位到的绝对路径，找不到再如实报「git 不可用」。
+_GIT_MISSING = object()  # 区分「还没找过」与「找过但没有」
+
+
+def _discover_git() -> str | None:
+    """定位 git 可执行文件：PATH → Windows 注册表/盘符扫描 → POSIX 常见位。"""
+    import shutil
+
+    exe = shutil.which("git")
+    if exe:
+        return exe
+    if sys.platform != "win32":
+        for p in ("/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"):
+            if os.path.isfile(p):
+                return p
+        return None
+    candidates: list[str] = []
+    try:  # Git for Windows 的安装注册表键，最可靠
+        import winreg
+
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(root, r"SOFTWARE\GitForWindows") as k:
+                    candidates.append(str(winreg.QueryValueEx(k, "InstallPath")[0]))
+            except OSError:
+                pass
+    except Exception:
+        pass
+    for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":  # <盘>\Git\cmd 与 <盘>\<一级目录>\Git\cmd
+        drive_root = f"{letter}:\\"
+        if not os.path.isdir(drive_root):
+            continue
+        names = ["Git"]
+        try:
+            names += [d for d in os.listdir(drive_root) if not d.startswith("$")]
+        except OSError:
+            pass
+        candidates.extend(os.path.join(drive_root, n, "Git") for n in names)
+    for c in candidates:
+        for p in (os.path.join(c, "cmd", "git.exe"), os.path.join(c, "bin", "git.exe"), os.path.join(c, "git.exe")):
+            if os.path.isfile(p):
+                return p
+    return None
 
 
 def _settings_path(data_dir: Path) -> Path:
@@ -142,6 +189,8 @@ class ServerState:
         self.static_tokens: dict[str, int] = {}  # session_id → 静态前缀 token 估算（系统提示词+工具）
         self.mcp_conns: list = []
         self.settings = load_settings(cfg.data_dir)  # {model?, api_key?, api_base?, models?} 优先于 toml
+        # 编辑器 LSP 桥（M6）：哑管道转发语言服务器子进程；settings["lsp"] 可覆盖各语言命令
+        self.lsp = LspManager(Path(cfg.workspace), self.settings, self._notify)
         # 迁移：顶层 model 有值但列表为空 → 合成条目（models 列表 = 所有已保存配置，仅一个 active）
         if self.settings.get("model") and not any(
             m.get("model") == self.settings["model"] for m in self.settings.get("models", [])
@@ -237,9 +286,15 @@ class ServerState:
             self._notify({"type": "Notice", "text": f"思考档位 → {level}"})
             self._notify(self._settings_payload())
         elif t == "GotoDef":
-            self._goto_def(msg)
+            await self._goto_def(msg)
         elif t == "LintCheck":
-            self._lint_check(msg)
+            await self._lint_check(msg)
+        elif t == "LspStart":
+            await self.lsp.start(msg.get("language", ""))
+        elif t == "LspToServer":
+            await self.lsp.forward(msg.get("language", ""), msg.get("message") or {})
+        elif t == "LspStop":
+            await self.lsp.stop(msg.get("language", ""))
         elif t == "ReadWorkspaceFile":
             self._read_workspace_file(msg)
         elif t == "ListDir":
@@ -255,17 +310,17 @@ class ServerState:
         elif t == "DeleteEntry":
             self._delete_entry(msg)
         elif t == "SearchWorkspace":
-            self._search_ws(msg)
+            await self._search_ws(msg)
         elif t == "GitStatus":
-            self._git_status()
+            await self._git_status()
         elif t == "GitStage":
-            self._git_stage(msg)
+            await self._git_stage(msg)
         elif t == "GitStageAll":
-            rc, out = self._run_git2("add", "-A")  # 全部暂存：含修改/新增/删除
+            rc, out = await asyncio.to_thread(self._run_git2, "add", "-A")  # 全部暂存：含修改/新增/删除
             self._notify({"type": "GitDone", "op": "stage", "ok": rc == 0, "message": out})
-            self._git_status()
+            await self._git_status()
         elif t == "GitUnstage":
-            self._git_unstage(msg)
+            await self._git_unstage(msg)
         elif t == "GitCommit":
             await self._git_commit(msg)
         elif t == "GitPush":
@@ -273,9 +328,9 @@ class ServerState:
         elif t == "GitGenMsg":
             await self._git_gen_msg(msg)
         elif t == "GitDiff":
-            self._git_diff(msg)
+            await self._git_diff(msg)
         elif t == "GitFileBase":
-            self._git_file_base(msg)
+            await self._git_file_base(msg)
         elif t == "UploadImage":
             self._upload_image(msg)
         elif t == "RenameSession":
@@ -793,6 +848,15 @@ class ServerState:
     def _write_ws_file(self, msg: dict) -> None:
         p = self._ws_path(msg.get("path", ""))
         content = msg.get("content", "")
+        # 乐观并发校验：编辑器带 base（它最后一次看到的磁盘内容），与当前磁盘不一致 = Agent/外部
+        # 已改过该文件。直接覆盖会静默丢掉新内容（「Agent 改回来了但又被旧缓冲写坏」的根因），
+        # 改为拒绝写入并回发 FileSaveConflict（附磁盘当前内容），由用户选重新加载或保留自己的版本。
+        base = msg.get("base")
+        if base is not None and p.is_file():
+            disk = p.read_text(encoding="utf-8", errors="replace")
+            if disk != base:
+                self._notify({"type": "FileSaveConflict", "path": msg.get("path", ""), "disk": disk})
+                return
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         self._notify({"type": "FileSaved", "path": msg.get("path", ""), "size": len(content.encode("utf-8"))})
@@ -835,7 +899,12 @@ class ServerState:
         shutil.move(str(src), str(target))
         self._notify({"type": "Notice", "text": f"已删除 {msg.get('path')}（可在 .my-harness/trash 找回）"})
 
-    def _search_ws(self, msg: dict) -> None:
+    async def _search_ws(self, msg: dict) -> None:
+        # rg 同步 subprocess 最多 15s、Python 兜底全盘遍历也慢：放线程池，
+        # 否则搜索期间整个 daemon 假死（编辑器点文件没响应就是它）
+        self._notify(await asyncio.to_thread(self._search_ws_hit, msg))
+
+    def _search_ws_hit(self, msg: dict) -> dict:
         """跨文件搜索（VSCode 式）：优先 ripgrep（快且遵守 .gitignore），无 rg 退回 Python 遍历。
         返回内容命中 + 文件名命中两组；单事件返回，≤limit 命中。"""
         import re as _re
@@ -912,10 +981,6 @@ class ServerState:
                             break
         if not rg or rg_err:
             ignored = self._gitignore_matcher()
-            try:
-                pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
-            except _re.error as e:
-                raise ValueError(f"invalid regex: {e}")
             results, files, truncated = [], [], False  # rg 失败场景重置后全量兜底
             try:
                 pat = _re.compile(q if is_regex else _re.escape(q), _re.IGNORECASE)
@@ -949,16 +1014,33 @@ class ServerState:
                         if len(results) >= limit:
                             truncated = True
                             break
-        self._notify(
-            {"type": "SearchResult", "query": q, "results": results, "files": files, "total": len(results), "truncated": truncated}
-        )
+        return {
+            "type": "SearchResult",
+            "query": q,
+            "results": results,
+            "files": files,
+            "total": len(results),
+            "truncated": truncated,
+        }
+
+    # —— git 可执行文件定位：daemon 可能在被裁剪的环境里被拉起（继承的 PATH 为空/缺 git），
+    # 只认 PATH 会让 SCM 面板误报「不是 git 仓库」——按注册表/常见安装位兜底找到绝对路径，进程内缓存 ——
+    _git_exe_cache: str | None | object = _GIT_MISSING
+
+    def _git_exe(self) -> str | None:
+        if self._git_exe_cache is _GIT_MISSING:
+            type(self)._git_exe_cache = _discover_git()
+        return self._git_exe_cache  # type: ignore[return-value]
 
     def _run_git(self, *args: str, timeout: int = 10) -> str | None:
         import subprocess
 
+        exe = self._git_exe()
+        if not exe:
+            return None
         try:
             r = subprocess.run(
-                ["git", "-C", str(Path(self.cfg.workspace).resolve()), *args],
+                [exe, "-C", str(Path(self.cfg.workspace).resolve()), *args],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -969,11 +1051,41 @@ class ServerState:
             return None
         return r.stdout if r.returncode == 0 else None
 
-    def _git_status(self) -> None:
-        out = self._run_git("status", "--porcelain=v1", "-b")
-        if out is None:
-            self._notify({"type": "GitStatus", "repo": False, "branch": "", "files": []})
-            return
+    async def _git_status(self) -> None:
+        # git status 在大仓库可能秒级：放线程池（事件循环被同步 git 卡住 = 界面全部命令假死）
+        self._notify(await asyncio.to_thread(self._git_status_payload))
+
+    def _git_status_payload(self) -> dict:
+        exe = self._git_exe()
+        if not exe:
+            return {
+                "type": "GitStatus",
+                "repo": False,
+                "branch": "",
+                "files": [],
+                "error": "git 不可用：PATH 和常见安装位都没找到 git.exe（安装 Git 或加入 PATH 后重启 daemon）",
+            }
+        import subprocess
+
+        try:
+            r = subprocess.run(
+                [exe, "-C", str(Path(self.cfg.workspace).resolve()), "status", "--porcelain=v1", "-b"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return {"type": "GitStatus", "repo": False, "branch": "", "files": [], "error": f"git 执行失败：{e}"}
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            if "not a git repository" in err.lower():
+                return {"type": "GitStatus", "repo": False, "branch": "", "files": []}
+            # 其余失败（dubious ownership、.git 损坏等）如实带出原因，不误报「不是仓库」
+            hint = err.splitlines()[-1] if err else f"exit code {r.returncode}"
+            return {"type": "GitStatus", "repo": False, "branch": "", "files": [], "error": f"git status 失败：{hint}"}
+        out = r.stdout
         branch, files, ahead = "", [], 0
         for line in out.splitlines():
             if line.startswith("## "):
@@ -992,15 +1104,18 @@ class ServerState:
                         "xy": line[:2],
                     }
                 )
-        self._notify({"type": "GitStatus", "repo": True, "branch": branch, "ahead": ahead, "files": files})
+        return {"type": "GitStatus", "repo": True, "branch": branch, "ahead": ahead, "files": files}
 
     def _run_git2(self, *args: str, timeout: int = 30) -> tuple[int, str]:
         """需要结果码的 git 调用（stage/commit 等写操作）：返回 (returncode, 合并输出)。"""
         import subprocess
 
+        exe = self._git_exe()
+        if not exe:
+            return 1, "git 不可用：未找到 git.exe"
         try:
             r = subprocess.run(
-                ["git", "-C", str(Path(self.cfg.workspace).resolve()), *args],
+                [exe, "-C", str(Path(self.cfg.workspace).resolve()), *args],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -1011,19 +1126,19 @@ class ServerState:
             return 1, str(e)
         return r.returncode, (r.stdout + r.stderr).strip()
 
-    def _git_stage(self, msg: dict) -> None:
-        rc, out = self._run_git2("add", "--", msg.get("path", ""))
+    async def _git_stage(self, msg: dict) -> None:
+        rc, out = await asyncio.to_thread(self._run_git2, "add", "--", msg.get("path", ""))
         self._notify({"type": "GitDone", "op": "stage", "ok": rc == 0, "message": out})
-        self._git_status()
+        await self._git_status()
 
-    def _git_unstage(self, msg: dict) -> None:
+    async def _git_unstage(self, msg: dict) -> None:
         path = msg.get("path", "")
-        rc, out = self._run_git2("reset", "-q", "HEAD", "--", path)
+        rc, out = await asyncio.to_thread(self._run_git2, "reset", "-q", "HEAD", "--", path)
         if rc != 0:
             # 初始提交（无 HEAD）：git reset 会失败，改用 git rm --cached 移出暂存区
-            rc, out = self._run_git2("rm", "--cached", "-q", "--", path)
+            rc, out = await asyncio.to_thread(self._run_git2, "rm", "--cached", "-q", "--", path)
         self._notify({"type": "GitDone", "op": "unstage", "ok": rc == 0, "message": out})
-        self._git_status()
+        await self._git_status()
 
     async def _git_commit(self, msg: dict) -> None:
         message = (msg.get("message") or "").strip()
@@ -1033,9 +1148,9 @@ class ServerState:
         args = ["commit", "-m", message]
         if msg.get("all"):
             args.insert(1, "-a")  # 无暂存内容时的一键全部提交（VSCode 式）
-        rc, out = self._run_git2(*args)
+        rc, out = await asyncio.to_thread(self._run_git2, *args)
         self._notify({"type": "GitDone", "op": "commit", "ok": rc == 0, "message": out})
-        self._git_status()
+        await self._git_status()
         if rc == 0 and msg.get("push"):  # 提交成功后连带推送（VSCode「提交并推送」）
             await self._git_push()
 
@@ -1044,24 +1159,24 @@ class ServerState:
         同步 subprocess 阻塞在 asyncio 循环里会让整个 daemon 假死（所有 WS 命令全部无响应）。"""
         rc, out = await asyncio.to_thread(self._run_git2, "push", timeout=120)
         self._notify({"type": "GitDone", "op": "push", "ok": rc == 0, "message": out or "已推送到远程"})
-        self._git_status()
+        await self._git_status()
 
-    def _git_diff(self, msg: dict) -> None:
+    async def _git_diff(self, msg: dict) -> None:
         path = msg.get("path", "")
-        diff = self._run_git("diff", "--", path) or ""
-        self._notify({"type": "GitDiff", "path": path, "diff": diff})
+        diff = await asyncio.to_thread(self._run_git, "diff", "--", path)
+        self._notify({"type": "GitDiff", "path": path, "diff": diff or ""})
 
-    def _git_file_base(self, msg: dict) -> None:
+    async def _git_file_base(self, msg: dict) -> None:
         """diff 视图的「改前」版本：git index 版本；未跟踪文件 base = 空串。"""
         path = msg.get("path", "")
-        base = self._run_git("show", f":{path}")
+        base = await asyncio.to_thread(self._run_git, "show", f":{path}")
         self._notify({"type": "FileBase", "path": path, "content": base if base is not None else ""})
 
     async def _git_gen_msg(self, msg: dict) -> None:
         """AI 生成提交信息：暂存 diff（无暂存则退回工作区 diff）喂给当前模型，回传一行 conventional commit。"""
-        diff = self._run_git("diff", "--cached") or ""
+        diff = await asyncio.to_thread(self._run_git, "diff", "--cached") or ""
         if not diff.strip():
-            diff = self._run_git("diff") or ""
+            diff = await asyncio.to_thread(self._run_git, "diff") or ""
         if not diff.strip():
             self._notify(
                 {"type": "GitCommitMsg", "ok": False, "error": "没有可提交的更改（暂存区与工作区都为空）"}
@@ -1117,7 +1232,11 @@ class ServerState:
             }
         )
 
-    def _goto_def(self, msg: dict) -> None:
+    async def _goto_def(self, msg: dict) -> None:
+        # 全工作区扫 *.py 可能耗秒级：放线程池跑，不卡事件循环（否则期间所有 WS 命令无响应）
+        self._notify(await asyncio.to_thread(self._goto_def_hit, msg))
+
+    def _goto_def_hit(self, msg: dict) -> dict:
         """轻量跳转定义（无 LSP）：全工作区搜 def/class 定义，同文件优先；
         找不到函数/类时退回本文件内的变量赋值。Ctrl+点击标识符触发。"""
         import re as _re
@@ -1166,17 +1285,19 @@ class ServerState:
                                 break
                 except OSError:
                     pass
-        self._notify(
-            {
-                "type": "GotoDefResult",
-                "req": msg.get("req"),
-                "name": name,
-                "file": hit[0] if hit else None,
-                "line": hit[1] if hit else None,
-            }
-        )
+        return {
+            "type": "GotoDefResult",
+            "req": msg.get("req"),
+            "name": name,
+            "file": hit[0] if hit else None,
+            "line": hit[1] if hit else None,
+        }
 
-    def _lint_check(self, msg: dict) -> None:
+    async def _lint_check(self, msg: dict) -> None:
+        # compile()/pyflakes 在大文件上不便宜：放线程池，编辑防抖期间不打断其它命令
+        self._notify(await asyncio.to_thread(self._lint_diags, msg))
+
+    def _lint_diags(self, msg: dict) -> dict:
         """编辑器语法校验（纯进程内，零子进程）：py 用 compile()，json 用 loads()；
         py 额外探测 pyflakes（可选依赖，装了就有未定义变量/未用导入等提示）。"""
         path = msg.get("path", "")
@@ -1222,7 +1343,7 @@ class ServerState:
                         "severity": "error",
                     }
                 )
-        self._notify({"type": "LintResult", "path": path, "req": req, "diagnostics": diags})
+        return {"type": "LintResult", "path": path, "req": req, "diagnostics": diags}
 
     @staticmethod
     def _pyflakes_diags(path: str, text: str) -> list[dict]:
@@ -1556,6 +1677,7 @@ def create_app(
         yield
         for c in state.mcp_conns:
             await c.close()
+        await state.lsp.shutdown()  # 语言服务器子进程随 daemon 退出，不留孤儿
 
     app = FastAPI(title="my-harness", lifespan=lifespan)
 

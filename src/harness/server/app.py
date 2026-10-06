@@ -264,6 +264,8 @@ class ServerState:
             self._git_unstage(msg)
         elif t == "GitCommit":
             self._git_commit(msg)
+        elif t == "GitPush":
+            self._git_push()
         elif t == "GitGenMsg":
             await self._git_gen_msg(msg)
         elif t == "GitDiff":
@@ -1016,6 +1018,14 @@ class ServerState:
             args.insert(1, "-a")  # 无暂存内容时的一键全部提交（VSCode 式）
         rc, out = self._run_git2(*args)
         self._notify({"type": "GitDone", "op": "commit", "ok": rc == 0, "message": out})
+        self._git_status()
+        if rc == 0 and msg.get("push"):  # 提交成功后连带推送（VSCode「提交并推送」）
+            self._git_push()
+
+    def _git_push(self) -> None:
+        """git push：网络操作放宽超时；无远程时报错信息原样回传到对话流。"""
+        rc, out = self._run_git2("push", timeout=120)
+        self._notify({"type": "GitDone", "op": "push", "ok": rc == 0, "message": out or "已推送到远程"})
         self._git_status()
 
     def _git_diff(self, msg: dict) -> None:

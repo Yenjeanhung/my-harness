@@ -187,6 +187,14 @@
         position: absolute; top: 8px; right: 16px; z-index: 30;
         display: flex; align-items: center; gap: 6px;
       }
+      /* 报错总览条（VSCode overview ruler）：编辑器右侧细条，按行号比例标出 lint 诊断，点击跳转 */
+      .ed-ruler { flex: none; width: 12px; position: relative; background: #0d1017; border-left: 1px solid #1c2128; overflow: hidden; }
+      .ed-ruler-mark { position: absolute; left: 3px; width: 5px; border-radius: 2px; min-height: 4px; cursor: pointer; }
+      .ed-ruler-mark:hover { outline: 1px solid #d7dae0aa; }
+      /* md 预览模式：编辑器舞台内渲染（复用 .md 正文样式） */
+      .md-preview { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 22px; font-size: 13.5px; background: #0d1017; }
+      .ed-tool.on { color: #79c0ff; border-color: #1f6feb; }
+      .ed-tool.md-tog { display: inline-flex; align-items: center; gap: 5px; }
       .add2chat { display: inline-flex; align-items: center; padding: 4px 8px; color: #79c0ff; }
       .add2chat:hover { color: #fff; border-color: #1f6feb; background: #1f3a5f66; }
       /* 对话输入框上的引用 chip（CodeBuddy 式） */
@@ -406,11 +414,15 @@
       .git-msg:focus { outline: none; border-color: #4493f8; }
       .git-msg-row { display: flex; gap: 6px; align-items: stretch; }
       .git-msg-row .git-msg { flex: 1; }
+      /* 生成提交信息：输入框内右侧小图标（VSCode 式），无边框底色 */
+      .git-msg-wrap { position: relative; flex: 1; display: flex; }
+      .git-msg-wrap .git-msg { flex: 1; width: 100%; padding-right: 28px; }
       .git-gen {
-        flex: none; width: 30px; align-self: stretch; display: flex; align-items: center; justify-content: center;
-        background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #a371f7; cursor: pointer;
+        position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+        width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center;
+        background: none; border: none; border-radius: 5px; color: #d2a8ff; cursor: pointer;
       }
-      .git-gen:hover:not(:disabled) { border-color: #a371f7; background: #2a1f3d; }
+      .git-gen:hover:not(:disabled) { background: #2a1f3d; }
       .git-gen:disabled { opacity: 0.5; cursor: default; }
       .git-commit {
         background: #1f6feb; border: none; border-radius: 6px; color: #fff;
@@ -418,6 +430,16 @@
       }
       .git-commit:hover:not(:disabled) { background: #388bfd; }
       .git-commit:disabled { opacity: 0.45; cursor: default; }
+      /* 分体式：主按钮「提交」+ 右侧窄按钮「提交并推送」 */
+      .git-commit-row { display: flex; }
+      .git-commit-row .git-commit { flex: 1; border-radius: 6px 0 0 6px; }
+      .git-commit-alt {
+        flex: none; width: 34px; display: flex; align-items: center; justify-content: center;
+        background: #1f6feb; border: none; border-left: 1px solid #0d1017; border-radius: 0 6px 6px 0;
+        color: #fff; cursor: pointer; padding: 0;
+      }
+      .git-commit-alt:hover:not(:disabled) { background: #388bfd; }
+      .git-commit-alt:disabled { opacity: 0.45; cursor: default; }
       .git-branch { color: #8b949e; font-size: 11.5px; margin-top: 4px; }
       .git-sec { color: #8b949e; font-size: 11.5px; margin-top: 6px; display: flex; gap: 6px; align-items: center; justify-content: space-between; }
       .git-sec b { color: #d7dae0; }

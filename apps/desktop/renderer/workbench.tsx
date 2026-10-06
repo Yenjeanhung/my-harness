@@ -12,6 +12,7 @@ import { linter, type Diagnostic } from "@codemirror/lint";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { MergeView } from "@codemirror/merge";
 import { Icon } from "./icons";
+import { mdRender } from "./md";
 import { sendCmd } from "./ws";
 
 // 编辑器里每个打开文件的文档状态（App 层持有，切 tab/重挂载不丢）
@@ -131,7 +132,22 @@ const cmLinter = linter(
       }, 3000);
       lintPending.set(req, (ds) => {
         clearTimeout(timer);
-        resolve(ds.map((d) => toCmDiag(view.state, d)));
+        const diags = ds.map((d) => toCmDiag(view.state, d));
+        // 广播给编辑器右侧报错总览条（EditorPane 监听 wb-diags）
+        window.dispatchEvent(
+          new CustomEvent("wb-diags", {
+            detail: {
+              path: lintPath,
+              diags: diags.map((d) => ({
+                line: view.state.doc.lineAt(d.from).number,
+                endLine: view.state.doc.lineAt(d.to).number,
+                severity: d.severity,
+                message: d.message,
+              })),
+            },
+          })
+        );
+        resolve(diags);
       });
       sendCmd({ type: "LintCheck", path: lintPath, text: view.state.doc.toString(), req });
     }),
@@ -154,7 +170,8 @@ export function FileTree(props: {
   onStage(path: string): void;
   onStageAll(): void;
   onUnstage(path: string): void;
-  onCommit(message: string, all: boolean): void;
+  onCommit(message: string, all: boolean, push: boolean): void;
+  onPush(): void;
   onGenMsg(): void;
 }) {
   const [entries, setEntries] = useState<Record<string, DirEntry[]>>({});
@@ -448,6 +465,9 @@ export function FileTree(props: {
           <div className="ft-head">
             <span className="ft-head-title">源代码管理</span>
             <span className="ft-head-acts">
+              <button className="ft-b" title="推送到远程（git push）" onClick={props.onPush}>
+                <Icon name="push" size={13} />
+              </button>
               <button className="ft-b" title="刷新（同步目录与 git 状态）" onClick={props.onRefresh}>
                 <Icon name="refresh" size={13} />
               </button>
@@ -461,6 +481,7 @@ export function FileTree(props: {
             onStageAll={props.onStageAll}
             onUnstage={props.onUnstage}
             onCommit={props.onCommit}
+            onPush={props.onPush}
             onGenMsg={props.onGenMsg}
             onDiff={props.onDiff}
             onOpen={props.onOpen}
@@ -479,7 +500,8 @@ function GitPanel(props: {
   onStage(path: string): void;
   onStageAll(): void;
   onUnstage(path: string): void;
-  onCommit(message: string, all: boolean): void;
+  onCommit(message: string, all: boolean, push: boolean): void;
+  onPush(): void;
   onGenMsg(): void; // AI 生成提交信息
   onDiff(path: string): void;
   onOpen(path: string, line?: number): void;
@@ -535,7 +557,7 @@ function GitPanel(props: {
     );
   return (
     <div className="ft-git">
-      <div className="git-msg-row">
+      <div className="git-msg-wrap">
         <textarea
           className="git-msg"
           placeholder="提交信息…"
@@ -544,7 +566,7 @@ function GitPanel(props: {
           onChange={(e) => props.setMsg(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canCommit) {
-              props.onCommit(props.msg.trim(), staged.length === 0);
+              props.onCommit(props.msg.trim(), staged.length === 0, false);
               props.setMsg("");
             }
           }}
@@ -559,20 +581,33 @@ function GitPanel(props: {
             setTimeout(() => setGenPending(false), 60000); // 兜底复位：模型异常时不永久卡灰
           }}
         >
-          <Icon name="sparkles" size={12} />
+          <Icon name="sparkles" size={14} />
         </button>
       </div>
-      <button
-        className="git-commit"
-        disabled={!canCommit}
-        title={staged.length === 0 ? "无暂存内容：提交全部更改（git commit -a）" : "提交暂存内容"}
-        onClick={() => {
-          props.onCommit(props.msg.trim(), staged.length === 0);
-          props.setMsg("");
-        }}
-      >
-        ✓ 提交{staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}
-      </button>
+      <div className="git-commit-row">
+        <button
+          className="git-commit"
+          disabled={!canCommit}
+          title={staged.length === 0 ? "无暂存内容：提交全部更改（git commit -a）" : "提交暂存内容"}
+          onClick={() => {
+            props.onCommit(props.msg.trim(), staged.length === 0, false);
+            props.setMsg("");
+          }}
+        >
+          ✓ 提交{staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}
+        </button>
+        <button
+          className="git-commit-alt"
+          disabled={!canCommit}
+          title="提交并推送（commit + push）"
+          onClick={() => {
+            props.onCommit(props.msg.trim(), staged.length === 0, true);
+            props.setMsg("");
+          }}
+        >
+          <Icon name="push" size={13} />
+        </button>
+      </div>
       {scm.branch && <div className="git-branch">⑂ {scm.branch}</div>}
       <div className="git-sec">
         暂存的更改 <b>{staged.length}</b>
@@ -624,6 +659,16 @@ export function EditorPane(props: {
   const propsRef = useRef(props);
   propsRef.current = props;
   const [hasSelection, setHasSelection] = useState(false);
+  // 报错总览条：当前文件的 lint 诊断（cmLinter 经 wb-diags 广播），F8 跳下一条
+  const [diags, setDiags] = useState<{ line: number; endLine: number; severity: string; message: string }[]>([]);
+  const diagsRef = useRef(diags);
+  const jumpRef = useRef<(dir: 1 | -1) => boolean>(() => false);
+  // md 预览：编辑/预览切换（仅 .md/.markdown tab 显示按钮）
+  const [mdPreview, setMdPreview] = useState(false);
+  const [mdTick, setMdTick] = useState(0);
+  const mdPreviewRef = useRef(false);
+  mdPreviewRef.current = mdPreview;
+  const mdToggleRef = useRef(() => {});
   const [aiOpen, setAiOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const ctxRef = useRef<HTMLDivElement | null>(null);
@@ -662,6 +707,16 @@ export function EditorPane(props: {
       }
     };
     window.addEventListener("wb-lint", onLint);
+    // wb-diags 事件 → 更新右侧报错总览条（仅当前文件）
+    const onDiags = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as { path: string; diags: { line: number; endLine: number; severity: string; message: string }[] };
+      const a = activeRef.current;
+      if (a.kind === "file" && a.path && a.path === d.path) {
+        diagsRef.current = d.diags;
+        setDiags(d.diags);
+      }
+    };
+    window.addEventListener("wb-diags", onDiags);
     // GotoDefResult 事件 → 命中则跳转打开
     const onGoto = (ev: Event) => {
       const d = (ev as CustomEvent).detail as { req: number; file: string | null; line: number };
@@ -670,6 +725,7 @@ export function EditorPane(props: {
     window.addEventListener("wb-gotodef", onGoto);
     return () => {
       window.removeEventListener("wb-lint", onLint);
+      window.removeEventListener("wb-diags", onDiags);
       window.removeEventListener("wb-gotodef", onGoto);
     };
   }, []);
@@ -692,7 +748,14 @@ export function EditorPane(props: {
           bracketMatching(),
           indentUnit.of("    "),
           cmSearch({ top: true }),
-          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab] as KeyBinding[]),
+          keymap.of([
+            { key: "F8", run: () => jumpRef.current(1) }, // 下一条报错（VSCode 式，越尾回环）
+            { key: "Mod-Shift-v", run: () => { mdToggleRef.current(); return true; } }, // md 预览切换
+            ...searchKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+            indentWithTab,
+          ] as KeyBinding[]),
           langComp.current.of([]),
           cmLinter,
           oneDark,
@@ -744,6 +807,7 @@ export function EditorPane(props: {
               propsRef.current.onDirty(a.path, text !== d.saved);
             }
             setHasSelection(!u.state.selection.main.empty);
+            if (mdPreviewRef.current) setMdTick((t) => t + 1); // 仅预览模式实时刷新，避免每次键入都重渲染
           }),
           EditorView.theme({
             "&": { height: "100%", fontSize: "13px" },
@@ -766,6 +830,8 @@ export function EditorPane(props: {
   const activePath = props.active.kind === "file" ? props.active.path : null;
   const docVersion = activePath ? props.docs.current[activePath]?.version : 0;
   useEffect(() => {
+    diagsRef.current = [];
+    setDiags([]); // 换文件先清掉上一个文件的报错标记
     const view = viewRef.current;
     if (!view || !activePath) return;
     const d = props.docs.current[activePath];
@@ -836,6 +902,36 @@ export function EditorPane(props: {
     props.onAddRef(p, startLine, endLine);
   };
 
+  // md 预览切回编辑：宿主曾被 display:none，需要重新测量避免渲染错位
+  useEffect(() => {
+    if (!mdPreview) viewRef.current?.requestMeasure();
+  }, [mdPreview]);
+
+  // 跳到指定行（报错总览条点击 / F8）
+  const gotoLine = (n: number) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const line = view.state.doc.line(Math.max(1, Math.min(n, view.state.doc.lines)));
+    view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
+    view.focus();
+  };
+  // F8：按行序找下一条诊断，越过最后一条回到第一条
+  const jumpDiag = (dir: 1 | -1) => {
+    const view = viewRef.current;
+    if (!view || !diagsRef.current.length) return false;
+    const ds = [...diagsRef.current].sort((a, b) => a.line - b.line);
+    const cur = view.state.doc.lineAt(view.state.selection.main.head).number;
+    let idx = ds.findIndex((d) => (dir > 0 ? d.line > cur : d.line < cur));
+    if (idx < 0) idx = dir > 0 ? 0 : ds.length - 1;
+    gotoLine(ds[idx].line);
+    return true;
+  };
+  jumpRef.current = jumpDiag;
+  const isMd = !!activePath && /\.(md|markdown)$/i.test(activePath);
+  mdToggleRef.current = () => {
+    if (isMd) setMdPreview((v) => !v);
+  };
+
   const fileName = (p: string) => p.split(/[\\/]/).pop() || p;
   const isEmpty = props.active.path == null;
 
@@ -878,6 +974,15 @@ export function EditorPane(props: {
           </div>
         ))}
         <div style={{ flex: 1 }} />
+        {props.active.kind === "file" && activePath && isMd && (
+          <button
+            className={"ed-tool md-tog" + (mdPreview ? " on" : "")}
+            title={mdPreview ? "切换到编辑模式（Ctrl+Shift+V）" : "切换到预览模式（Ctrl+Shift+V）"}
+            onClick={() => setMdPreview((v) => !v)}
+          >
+            <Icon name="eye" size={12} /> {mdPreview ? "编辑" : "预览"}
+          </button>
+        )}
         {props.active.kind === "file" && activePath && (
           <>
             <button className="ed-tool" title="Ctrl+S 保存" onClick={() => props.onSave(activePath)}>
@@ -898,8 +1003,37 @@ export function EditorPane(props: {
           <DiffView path={props.active.path} store={props.diffData[props.active.path]} />
         ) : (
           <>
-            <div ref={hostRef} className="ed-host" />
-            <div className="ed-floats">
+            <div ref={hostRef} className="ed-host" style={mdPreview ? { display: "none" } : undefined} />
+            {!mdPreview && (
+              <div className="ed-ruler" title="报错总览（点击标记跳转，F8 下一条）">
+                {(() => {
+                  const total = Math.max(1, viewRef.current?.state.doc.lines || 1);
+                  return diags.map((d, i) => {
+                    const color = d.severity === "error" ? "#f85149" : d.severity === "warning" ? "#e3b341" : "#4493f8";
+                    const top = (Math.min(d.line, total) / total) * 100;
+                    const h = Math.max(0.8, ((d.endLine - d.line + 1) / total) * 100);
+                    return (
+                      <div
+                        key={i}
+                        className="ed-ruler-mark"
+                        title={`第 ${d.line} 行 ${d.severity === "error" ? "错误" : d.severity === "warning" ? "警告" : "提示"}：${d.message}`}
+                        style={{ top: `${top}%`, height: `${h}%`, background: color }}
+                        onClick={() => gotoLine(d.line)}
+                      />
+                    );
+                  });
+                })()}
+              </div>
+            )}
+            {mdPreview && (
+              <div
+                className="md md-preview"
+                dangerouslySetInnerHTML={{
+                  __html: mdRender(props.active.kind === "file" && activePath ? props.docs.current[activePath]?.text ?? "" : ""),
+                }}
+              />
+            )}
+            <div className="ed-floats" style={mdPreview ? { display: "none" } : undefined}>
             {hasSelection && (
               <button className="ed-tool add2chat" title="选区加入对话（发送时自动带上代码）" onClick={addRef}>
                 <Icon name="download" size={13} />

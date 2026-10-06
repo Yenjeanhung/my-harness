@@ -178,6 +178,19 @@ export const ICON_PATHS = {
       <path d="M9 4v16" />
     </>
   ),
+  push: (
+    <>
+      <path d="M18 15v4a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4" />
+      <path d="M12 15V3" />
+      <path d="M7 8l5-5 5 5" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof ICON_PATHS;

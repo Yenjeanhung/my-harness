@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { createRoot } from "react-dom/client";
-import { marked } from "marked";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Icon, ThinkRow, TerminalPanel, type IconName } from "./icons";
@@ -31,16 +30,7 @@ import type {
   WsCommand,
 } from "./protocol";
 
-marked.setOptions({ gfm: true, breaks: true });
-
-// 助手消息是模型输出的 Markdown：渲染成 HTML 前做最小净化（去 script/事件属性/js: 链接）
-function mdRender(text: string): string {
-  const html = marked.parse(text || "");
-  return String(html)
-    .replace(/<(script|style|iframe)[\s\S]*?<\/\1>/gi, "")
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, "")
-    .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, "");
-}
+import { mdRender } from "./md";
 
 const params = new URLSearchParams(window.location.search);
 const WS_URL = params.get("ws") || "ws://127.0.0.1:8765/ws";
@@ -753,10 +743,12 @@ function App() {
           setGitScm({ repo: e.repo !== false, branch: e.branch || "", files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })) });
           break;
         case "GitDone":
-          // stage/unstage/commit 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
+          // stage/unstage/commit/push 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
           if (!e.ok) addItem({ kind: "error", text: `Git ${e.op} 失败：${e.message}` });
           else if (e.op === "commit")
             addItem({ kind: "notice", text: `已提交：${(e.message || "").split("\n")[0]}` });
+          else if (e.op === "push")
+            addItem({ kind: "notice", text: `已推送到远程：${(e.message || "").split("\n")[0]}` });
           break;
         case "GitCommitMsg":
           // AI 生成的提交信息：转发给 Git 面板（生成失败也走同一事件，面板内提示）
@@ -1766,7 +1758,8 @@ function App() {
             onStage={(path) => sendCmd({ type: "GitStage", path })}
             onStageAll={() => sendCmd({ type: "GitStageAll" })}
             onUnstage={(path) => sendCmd({ type: "GitUnstage", path })}
-            onCommit={(message, all) => sendCmd({ type: "GitCommit", message, all })}
+            onCommit={(message, all, push) => sendCmd({ type: "GitCommit", message, all, push })}
+            onPush={() => sendCmd({ type: "GitPush" })}
             onGenMsg={() => sendCmd({ type: "GitGenMsg" })}
           />
         )}

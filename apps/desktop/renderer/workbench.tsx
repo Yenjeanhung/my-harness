@@ -183,6 +183,18 @@ export function FileTree(props: {
   const [newName, setNewName] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [commitMsg, setCommitMsg] = useState("");
+  // 行右键菜单：在资源管理器中显示（桌面端 shell.showItemInFolder，浏览器环境无此能力则不出现）
+  const [ctx, setCtx] = useState<{ x: number; y: number; path: string; kind: "file" | "dir" } | null>(null);
+  const ctxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!ctx) return;
+    const onDown = (e: MouseEvent) => {
+      if (ctxRef.current && ctxRef.current.contains(e.target as Node)) return;
+      setCtx(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [ctx]);
   const [pushing, setPushing] = useState(false); // 推送进行中：按钮禁用，GitDone(op=push) 经 wb-pushdone 复位
   const lastSeq = useRef(0);
 
@@ -276,7 +288,12 @@ export function FileTree(props: {
           className={"ft-row" + (touched ? " touched" : "")}
           style={{ paddingLeft: 8 + depth * 14 }}
           onClick={() => (e.kind === "dir" ? toggle(path) : props.onOpen(path))}
-          title={path + (e.kind === "file" ? "（悬浮 ✎ 可看改动 diff）" : "")}
+          onContextMenu={(ev) => {
+            if (!window.myharness) return; // 浏览器调试环境没有 shell 能力
+            ev.preventDefault();
+            setCtx({ x: ev.clientX, y: ev.clientY, path, kind: e.kind });
+          }}
+          title={path}
         >
           <span className="ft-chev">{e.kind === "dir" ? (isOpen ? "▾" : "▸") : ""}</span>
           <span className="ft-icon">
@@ -314,11 +331,6 @@ export function FileTree(props: {
                   <Icon name="folderPlus" size={11} />
                 </button>
               </>
-            )}
-            {e.kind === "file" && (
-              <button className="ft-b" title="查看改动 (diff)" onClick={() => props.onDiff(path)}>
-                <Icon name="edit" size={11} />
-              </button>
             )}
             <button className="ft-b" title="重命名" onClick={() => { setRenaming(path); setRenameVal(e.name); }}>
               <Icon name="edit" size={11} />
@@ -509,6 +521,19 @@ export function FileTree(props: {
           />
         </>
       ) : null}
+      {ctx && (
+        <div className="ctx-menu" ref={ctxRef} style={{ left: ctx.x, top: ctx.y }}>
+          <div
+            className="ai-item"
+            onClick={() => {
+              window.myharness?.showInFolder(ctx.path);
+              setCtx(null);
+            }}
+          >
+            <Icon name="folder" size={13} /> {ctx.kind === "dir" ? "在资源管理器中打开" : "在资源管理器中显示"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -855,6 +880,7 @@ export function EditorPane(props: {
 
   // 切 tab / 外部重载(version)：覆盖 CM 文档 + 切语言
   const activePath = props.active.kind === "file" ? props.active.path : null;
+  const isDiff = props.active.kind === "diff" && !!props.active.path; // diff 标签激活：CM 宿主隐藏不卸载
   const docVersion = activePath ? props.docs.current[activePath]?.version : 0;
   useEffect(() => {
     diagsRef.current = [];
@@ -929,10 +955,22 @@ export function EditorPane(props: {
     props.onAddRef(p, startLine, endLine);
   };
 
-  // md 预览切回编辑：宿主曾被 display:none，需要重新测量避免渲染错位
+  // md 预览/diff 切回编辑：宿主曾被 display:none，需要重新测量避免渲染错位
   useEffect(() => {
-    if (!mdPreview) viewRef.current?.requestMeasure();
-  }, [mdPreview]);
+    if (!mdPreview && !isDiff) viewRef.current?.requestMeasure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mdPreview, isDiff]);
+
+  // 兜底自愈：宿主与 CM DOM 意外失联（任何条件渲染重构的遗漏）都重新挂接，彻底杜绝「文件打不开」
+  useEffect(() => {
+    const host = hostRef.current;
+    const view = viewRef.current;
+    if (host && view && view.dom && view.dom.parentElement !== host) {
+      host.innerHTML = "";
+      host.appendChild(view.dom);
+      view.requestMeasure();
+    }
+  });
 
   // 跳到指定行（报错总览条点击 / F8）
   const gotoLine = (n: number) => {
@@ -1026,11 +1064,15 @@ export function EditorPane(props: {
         </div>
       )}
       <div className="ed-stage">
-        {props.active.kind === "diff" && props.active.path ? (
-          <DiffView path={props.active.path} store={props.diffData[props.active.path]} />
+        {/* CM 宿主永久常驻（diff/md 预览只隐藏、不卸载）：EditorView 仅在挂载时创建一次，
+            宿主被条件卸载后 view.dom 脱挂，切回文件 tab 正文永远空白——「点了文件打不开」的根因 */}
+        <div ref={hostRef} className="ed-host" style={mdPreview || isDiff ? { display: "none" } : undefined} />
+        {isDiff ? (
+          props.active.path ? (
+            <DiffView path={props.active.path} store={props.diffData[props.active.path]} />
+          ) : null
         ) : (
           <>
-            <div ref={hostRef} className="ed-host" style={mdPreview ? { display: "none" } : undefined} />
             {!mdPreview && (
               <div className="ed-ruler" title="报错总览（点击标记跳转，F8 下一条）">
                 {(() => {
@@ -1169,20 +1211,15 @@ export function EditorPane(props: {
 // —— 改动对比：git index 版本 vs 磁盘当前（CodeMirror MergeView），数据由 App 的 diffStore 注入 ——
 export function DiffView({ path, store }: { path: string; store?: { base?: string; current?: string } }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  // 单栏模式：无差异（暂存后未再改，基线=当前）或新文件（未跟踪，基线为空）——直接展示当前内容
+  const single = !!store && store.base != null && store.current != null && (!store.base || store.base === store.current);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !store || store.base == null || store.current == null) return;
     let destroyed = false;
-    let view: MergeView | null = null;
+    let view: MergeView | EditorView | null = null;
     host.innerHTML = "";
-    if (store.base === store.current) {
-      const tip = document.createElement("div");
-      tip.className = "diff-same";
-      tip.textContent = "与 git 基线无改动（未跟踪的新文件基线为空，即全部新增）";
-      host.appendChild(tip);
-      return;
-    }
     // 与主编辑器同款观感：语法高亮 + oneDark + 行号；超大文件跳过高亮且不折行
     // （压缩成单行的 bundle 折行会折出数万可视行卡死渲染——整行横滚，VSCode 同款策略）
     (async () => {
@@ -1197,6 +1234,13 @@ export function DiffView({ path, store }: { path: string; store?: { base?: strin
         oneDark,
         ...(lang ? [lang] : []),
       ];
+      if (single) {
+        view = new EditorView({
+          state: EditorState.create({ doc: store.current, extensions: pane() }),
+          parent: host,
+        });
+        return;
+      }
       view = new MergeView({
         a: { doc: store.base, extensions: pane() },
         b: { doc: store.current, extensions: pane() },
@@ -1209,14 +1253,20 @@ export function DiffView({ path, store }: { path: string; store?: { base?: strin
       view?.destroy();
       view = null;
     };
-  }, [path, store?.base, store?.current]);
+  }, [path, store?.base, store?.current, single]);
 
   return (
     <div className="diff-wrap">
       <div className="diff-head">
-        <span>基线（git index）</span>
-        <span className="diff-path" title={path}>{path}</span>
-        <span>当前（磁盘）</span>
+        {single ? (
+          <span className="diff-path" title={path}>{path}</span>
+        ) : (
+          <>
+            <span>基线（git index）</span>
+            <span className="diff-path" title={path}>{path}</span>
+            <span>当前（磁盘）</span>
+          </>
+        )}
       </div>
       <div ref={hostRef} className="diff-host" />
       {(!store || store.base == null || store.current == null) && <div className="diff-loading">加载对比中…</div>}

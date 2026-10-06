@@ -1,8 +1,8 @@
 // Electron 主进程：确保 my-harness daemon 在跑（附着已有 → 内嵌 sidecar → PATH 上的 harness），
 // 再打开窗口。渲染进程是纯 Web 页面，连 ws://127.0.0.1:<port>/ws —— 与 CLI 共用同一协议。
 // 源码是 main.ts，main.cjs 由 build.mjs 编译产出。
-import { app, BrowserWindow, dialog, Menu, ipcMain } from "electron";
-import { spawn, exec } from "child_process";
+import { app, BrowserWindow, dialog, Menu, ipcMain, shell } from "electron";
+import { spawn, exec, execSync } from "child_process";
 import type { ChildProcess } from "child_process";
 import http from "http";
 import fs from "fs";
@@ -122,18 +122,73 @@ interface SpawnAttempt {
 }
 
 // rg（ripgrep）随包分发：打包后在 resources/bin，开发时在 build/rg。
-// 前插进 daemon 的 PATH，服务端 shutil.which("rg") 命中即用快速搜索；都没有则自然退回 Python 遍历。
+// git：双击启动（Explorer 环境）时 PATH 里可能没有 git（自定义安装盘符/终端 profile 注入），
+// daemon 的 SCM 全靠它——注册表 GitForWindows\InstallPath + 常见目录探测，命中就前插进 daemon PATH。
+let gitCmdDir: string | null | undefined; // undefined=未探测
+function findGitCmdDir(): string | null {
+  if (gitCmdDir !== undefined) return gitCmdDir;
+  gitCmdDir = null;
+  const isWin = process.platform === "win32";
+  const exe = isWin ? "git.exe" : "git";
+  const has = (dir: string) => !!dir && fs.existsSync(path.join(dir, exe));
+  // 1) 当前 PATH 已能解析（终端里启动应用的常见情形）：不折腾
+  if ((process.env.PATH || "").split(path.delimiter).some(has)) return null;
+  const candidates: string[] = [];
+  if (isWin) {
+    // 2) Git for Windows 安装器写的注册表 InstallPath
+    try {
+      const out = execSync(
+        'reg query "HKLM\\SOFTWARE\\GitForWindows" /v InstallPath 2>nul & reg query "HKCU\\SOFTWARE\\GitForWindows" /v InstallPath 2>nul',
+        { encoding: "utf8", timeout: 3000 }
+      );
+      for (const m of out.matchAll(/REG_SZ\s+(.+)/g)) {
+        const p = m[1].trim();
+        if (p) candidates.push(path.join(p, "cmd"));
+      }
+    } catch {}
+    // 3) 注册表里的用户/系统 PATH（Explorer 进程环境是启动快照，装完 git 不重启就看不到）
+    for (const key of ["HKCU\\Environment", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"]) {
+      try {
+        const out = execSync(`reg query "${key}" /v Path`, { encoding: "utf8", timeout: 3000 });
+        const m = out.match(/REG_SZ\s+(.+)/);
+        for (const entry of (m?.[1] || "").split(";")) {
+          const p = entry.trim();
+          if (!p) continue;
+          candidates.push(p, path.join(p, "cmd"));
+        }
+      } catch {}
+    }
+    // 4) 兜底：各盘符浅层扫描 X:\Git\cmd 与 X:\<一级目录>\Git\cmd（覆盖解压版自定义位置）
+    for (const L of "DEFGHIJKLMNOPQRSTUVWXYZC".split("")) {
+      const root = `${L}:\\`;
+      if (!fs.existsSync(root)) continue;
+      candidates.push(path.join(root, "Git", "cmd"));
+      try {
+        for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+          if (d.isDirectory()) candidates.push(path.join(root, d.name, "Git", "cmd"));
+        }
+      } catch {}
+    }
+  } else {
+    candidates.push("/usr/bin", "/usr/local/bin", "/opt/homebrew/bin");
+  }
+  gitCmdDir = candidates.find(has) || null;
+  if (gitCmdDir) console.log(`[main] PATH 上没有 git，已补：${gitCmdDir}`);
+  return gitCmdDir;
+}
+
 function daemonEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  const exe = process.platform === "win32" ? "rg.exe" : "rg";
-  const dirs = [
-    process.resourcesPath ? path.join(process.resourcesPath, "bin") : "",
-    path.join(__dirname, "build", "rg"),
+  const isWin = process.platform === "win32";
+  const candidates: [string, string][] = [
+    [process.resourcesPath ? path.join(process.resourcesPath, "bin") : "", isWin ? "rg.exe" : "rg"],
+    [path.join(__dirname, "build", "rg"), isWin ? "rg.exe" : "rg"],
   ];
-  for (const d of dirs) {
-    if (d && fs.existsSync(path.join(d, exe))) {
-      env.PATH = d + path.delimiter + (env.PATH || "");
-      break;
+  const git = findGitCmdDir();
+  if (git) candidates.push([git, isWin ? "git.exe" : "git"]); // SCM：daemon 进程也要能找到 git
+  for (const [dir, exe] of candidates) {
+    if (dir && fs.existsSync(path.join(dir, exe))) {
+      env.PATH = dir + path.delimiter + (env.PATH || "");
     }
   }
   return env;
@@ -269,6 +324,14 @@ app.whenReady().then(async () => {
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
   ipcMain.handle("get-projects", () => loadProjects());
+  // 文件树右键「在资源管理器中显示」：相对路径按当前项目根解析，explorer 里定位并选中
+  ipcMain.handle("show-in-folder", (_e, rel: string) => {
+    const rootDir = terminalWorkspace || loadProjects().current || app.getPath("home");
+    const abs = path.resolve(rootDir, String(rel || ""));
+    if (!fs.existsSync(abs)) return "missing";
+    shell.showItemInFolder(abs);
+    return "ok";
+  });
   ipcMain.handle("open-project", async (_e, p: string) => {
     if (!p || !fs.existsSync(p) || !fs.statSync(p).isDirectory()) return "invalid";
     const st = loadProjects();
@@ -320,6 +383,10 @@ app.whenReady().then(async () => {
     height: 880,
     backgroundColor: "#111318",
     title: "Y Harness",
+    // CodeBuddy 式自绘顶栏：隐藏系统标题栏，网页延伸到顶（顶栏内放面板开关）；
+    // 右上角最小化/最大化/关闭仍由系统 WCO 绘制，height 必须与 .titlebar 的 CSS 高度一致
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#111318", symbolColor: "#c9d1d9", height: 36 },
     ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
     webPreferences: {
       contextIsolation: true,

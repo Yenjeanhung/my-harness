@@ -72,12 +72,18 @@ sleep 10 && curl http://127.0.0.1:8123/health
 **快速迭代（推荐日常用）**：
 
 ```bash
-cd apps/desktop && npm run dist:fast
+npm run pack           # 仓库根目录直接跑即可（根 package.json 只是转发到 apps/desktop，零依赖）
+# 等价：cd apps/desktop && npm run pack
 ```
 
-- 只出**免安装目录**（`dist/win-unpacked/`，直接运行里面的 `Y Harness.exe`），跳过 NSIS 安装包和 zip 两道压缩；
-- `--compression store`：不再压缩 102MB 的 sidecar，electron-builder 从几分钟缩到几十秒；
-- `prepkg.cjs` 检测到 sidecar 没变会跳过 102MB 拷贝。
+- **增量便携包**（`out/y-harness-portable/`，直接运行里面的 `Y Harness.exe`），自研 pack-fast.cjs，不用 electron-builder：
+  - Electron 运行时只在首次/升级时拷入，之后逐文件比对跳过——日常改代码后整条链路 **~4 秒**（esbuild ~0.5s + 增量拷贝 ~0.1s）；
+  - 应用产物以 `resources/app` 普通目录放置（不用 asar）；main.cjs / renderer/* 是纯 JS，**应用运行中也能覆盖**——
+    改完代码 `npm run pack` 后，运行中的应用按 Ctrl+R 重载即见新界面（改了主进程才需要重启应用）；
+  - exe 由 electron.exe 硬链接而来，rcedit 打一次图标与版本信息（Electron 版本 / 图标 / 版本号不变不重打）；
+  - 不碰 `dist/win-unpacked`：从那里跑着的旧应用锁 DLL 导致 electron-builder 报 `Access is denied` 的坑就此绕开。
+- electron-builder 的 `dist:fast`（`dist/win-unpacked/`）仍可用，但每次全量解包 Electron 运行时（几十秒），
+  且应用正从该目录运行时会撞文件锁——日常迭代请用 `npm run pack`。
 
 **发布完整安装包**：
 
@@ -88,8 +94,8 @@ cd apps/desktop && npm run dist
 - 产出 NSIS 安装包 + zip（双 target 全量压缩，最慢，只在你真正要发版时跑）。
 
 ```bash
-cd apps/desktop
-npm run dist:fast      # 日常迭代：免安装目录 + 不压缩，几十秒
+npm run pack           # 日常迭代：增量便携包 out/y-harness-portable/，约 4 秒（根目录直接跑）
+npm run dist:fast      # electron-builder 免安装目录 dist/win-unpacked/，几十秒（易撞运行中应用的文件锁）
 npm run dist           # 发版：NSIS 安装包 + zip 全量压缩
 ```
 
@@ -103,8 +109,9 @@ npm run dist           # 发版：NSIS 安装包 + zip 全量压缩
 | 文件 | 说明 |
 |---|---|
 | `dist/harness-server.exe` | 独立 daemon，可单独分发（`harness-server.exe --port 8765`） |
+| `apps/desktop/out/y-harness-portable/` | **增量便携包**（日常迭代产物，秒级重打包） |
 | `apps/desktop/dist/My-Harness Setup *.exe` | Windows 安装包（双击安装 / `/S` 静默安装） |
-| `apps/desktop/dist/win-unpacked/` | 免安装目录版（便携版） |
+| `apps/desktop/dist/win-unpacked/` | electron-builder 免安装目录版（旧便携路径） |
 
 安装后：开始菜单/桌面快捷方式启动；数据（事件库、记忆、评测报告）在 `~/.my-harness/`。
 

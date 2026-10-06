@@ -267,6 +267,7 @@ declare global {
       pickFolder(): Promise<string | null>;
       getProjects(): Promise<{ current: string | null; recent: string[] }>;
       openProject(p: string): Promise<string>;
+      showInFolder(rel: string): Promise<string>;
       // —— 内嵌终端（node-pty 会话，渲染端 xterm.js 交互）——
       termCreate(cols: number, rows: number): Promise<{ id: number; cwd: string; title: string; error?: string }>;
       termInput(id: number, data: string): void;

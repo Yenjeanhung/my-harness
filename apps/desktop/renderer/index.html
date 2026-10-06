@@ -24,7 +24,19 @@
       select { border: 1px solid #30363d; border-radius: 6px; outline: none; }
 
       /* —— 工作区布局 —— */
-      .app { display: flex; height: 100vh; }
+      .root { display: flex; flex-direction: column; height: 100vh; }
+      /* 自绘顶栏（titleBarStyle:hidden 后页面从顶部开始）：按住拖动窗口，右侧面板开关不参与拖拽；
+         宽度用 titlebar-area 让出右上角系统窗口控制钮（WCO）的区域 */
+      .titlebar {
+        flex: none; height: 36px; display: flex; align-items: center; gap: 8px;
+        padding: 0 6px 0 14px; background: #111318; border-bottom: 1px solid #262a33;
+        -webkit-app-region: drag; user-select: none;
+        width: env(titlebar-area-width, 100%);
+        margin-left: env(titlebar-area-x, 0);
+      }
+      .tb-title { font-size: 12.5px; font-weight: 600; color: #8b949e; }
+      .titlebar .panel-toggles { margin-left: auto; -webkit-app-region: no-drag; }
+      .app { display: flex; flex: 1; min-height: 0; }
       aside {
         width: 272px; min-width: 272px; max-width: 272px;
         border-right: 1px solid #262a33; background: #0f1218;
@@ -133,20 +145,13 @@
       .acct .sub { font-size: 10.5px; color: #7d8590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .gear { width: 32px; min-width: 32px; padding: 5px 0; text-align: center; font-size: 14px; }
 
-      .main { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; position: relative; }
+      .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
       /* —— 工作台三栏（IDE-DESIGN.md M0）：侧栏 | 编辑器列 | 对话列 —— */
-      .ide { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+      .ide { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
       .ide-body { flex: 1; display: flex; min-height: 0; position: relative; }
+      /* 对话模式（actbar 会话键切出）：纵向排布，终端以全宽底部抽屉挂在对话栏下 */
+      .ide-body.chatmode { flex-direction: column; }
       .main.chat-col { height: auto; min-height: 0; }
-      /* 收起侧栏/对话栏后的浮出按钮 */
-      .sb-float, .chat-float {
-        position: absolute; z-index: 45; width: 30px; height: 34px; border-radius: 8px;
-        background: #161b22; border: 1px solid #30363d; color: #8b949e; cursor: pointer; font-size: 15px;
-      }
-      .sb-float:hover, .chat-float:hover { color: #d7dae0; border-color: #4d5560; background: #1c2230; }
-      .sb-float { left: 6px; top: 50%; transform: translateY(-50%); }
-      .chat-float { right: 10px; top: 56px; }
-      .sb-float:hover, .chat-float:hover { color: #d7dae0; border-color: #4d5560; }
       /* 编辑器舞台：宿主常驻 + 覆盖层空态；overflow:hidden 兜底——超长单行（压缩过的 bundle 等）不得穿到右栏 */
       .ed { position: relative; }
       .ed-stage { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
@@ -664,17 +669,13 @@
       }
       /* —— 内嵌终端（编辑器下方抽屉，VS Code/ZCode 式）—— */
       /* 面板开关组（CodeBuddy 式：左侧栏 / 终端 / 对话栏），对话栏收起后浮在编辑器右上角 */
-      .panel-toggles { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+      .panel-toggles { display: inline-flex; align-items: center; gap: 2px; }
       .panel-toggles button {
         width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
         background: transparent; border: none; border-radius: 6px; color: #7d8590; cursor: pointer; padding: 0;
       }
       .panel-toggles button:hover { color: #d7dae0; background: #21262d; }
       .panel-toggles button.on { color: #79c0ff; background: #111a27; }
-      .panel-toggles.floated {
-        position: absolute; top: 40px; right: 10px; z-index: 45; padding: 2px;
-        background: rgba(22, 25, 33, 0.92); border: 1px solid #30363d; border-radius: 8px;
-      }
       .term-toggle {
         margin-left: auto; background: transparent; border: 1px solid transparent; border-radius: 6px;
         color: #7d8590; cursor: pointer; padding: 3px 7px; display: inline-flex; align-items: center;
@@ -817,7 +818,7 @@
       }
 
       /* —— 设置页 —— */
-      .settings-screen { display: flex; height: 100vh; }
+      .settings-screen { flex: 1; min-height: 0; display: flex; }
       .settings-menu { width: 260px; min-width: 260px; background: #0f1218; border-right: 1px solid #262a33; padding: 16px 12px; }
       .settings-menu .back { color: #8b949e; cursor: pointer; font-size: 13px; padding: 6px 10px; border-radius: 6px; margin-bottom: 14px; }
       .settings-menu .back:hover { color: #d7dae0; background: #161b22; }

@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld("myharness", {
   getProjects: (): Promise<{ current: string | null; recent: string[] }> =>
     ipcRenderer.invoke("get-projects"),
   openProject: (p: string): Promise<string> => ipcRenderer.invoke("open-project", p),
+  // 文件树右键：在系统资源管理器里定位文件/文件夹
+  showInFolder: (rel: string): Promise<string> => ipcRenderer.invoke("show-in-folder", rel),
   // —— 内嵌终端（node-pty 会话）——
   termCreate: (cols: number, rows: number): Promise<{ id: number; cwd: string; title: string }> =>
     ipcRenderer.invoke("term-create", cols, rows),

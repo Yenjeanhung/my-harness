@@ -1,0 +1,14 @@
+{
+  "name": "my-harness-root",
+  "private": true,
+  "description": "便捷入口：在仓库根目录转发到 apps/desktop 的打包/开发脚本，本身零依赖",
+  "scripts": {
+    "bundle": "npm --prefix apps/desktop run bundle",
+    "typecheck": "npm --prefix apps/desktop run typecheck",
+    "dev": "npm --prefix apps/desktop run dev",
+    "start": "npm --prefix apps/desktop run start",
+    "pack": "npm --prefix apps/desktop run pack",
+    "dist": "npm --prefix apps/desktop run dist",
+    "dist:fast": "npm --prefix apps/desktop run dist:fast"
+  }
+}

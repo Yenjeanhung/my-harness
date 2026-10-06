@@ -315,6 +315,7 @@ function App() {
   const [groupInput, setGroupInput] = useState("");
   const [groupRenaming, setGroupRenaming] = useState<{ old: string; value: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragSid, setDragSid] = useState<string | null>(null); // 正在被拖拽的会话（拖拽反馈 + dataTransfer 兜底）
   const [moveSession, setMoveSession] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [groupBy, setGroupBy] = useState<"date" | "group">("date"); // date | topic | group
@@ -349,7 +350,8 @@ function App() {
   const [queue, setQueue] = useState<QueueItem[]>([]); // 运行中排队的消息
   const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（编辑器下方抽屉）
   // —— 工作台（IDE，见 IDE-DESIGN.md）——
-  const editorOpen = true; // 编辑器常开：顶部面板开关组只管 左侧栏/终端/对话栏（CodeBuddy 式）
+  // editorOpen=false 即「对话模式」：编辑器让位、对话占满主区（actbar 会话键切换）
+  const [editorOpen, setEditorOpen] = useState(true);
   const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1366,11 +1368,10 @@ function App() {
     const p = await window.myharness?.pickFolder?.();
     if (p) switchProject(p);
   };
-  // 进入项目面板时拉取最近项目列表
+  // 项目列表：项目子面板打开时拉取；文件模式顶栏的当前项目名也依赖它
   useEffect(() => {
-    if (sideTab !== "sessions" || !showProjects) return;
-    window.myharness?.getProjects?.().then(setProjects).catch(() => {});
-  }, [sideTab]);
+    if (sideTab === "files" || showProjects) window.myharness?.getProjects?.().then(setProjects).catch(() => {});
+  }, [sideTab, showProjects]);
 
   const pickProvider = (key: string) =>
     setModelForm((f) => ({ ...f, provider: key, api_base: f.api_base || PROVIDER_BASES[key] || "" }));
@@ -1691,50 +1692,7 @@ function App() {
     </>
   );
 
-  if (view === "settings") {
-    const pages = { models: modelsPage, memory: memoryPage, mcp: mcpPage, skills: skillsPage, general: generalPage };
-    return (
-      <div className="settings-screen">
-        <aside className="settings-menu">
-          <div className="back" onClick={() => setView("chat")}>← 返回工作区</div>
-          {permission && (
-            <div className="perm-badge" onClick={() => { setView("chat"); }} title="有待审批请求，点击返回">
-              ⚠ 有待审批请求
-            </div>
-          )}
-          <h3>基础设置</h3>
-          <div className={"mitem" + (section === "models" ? " active" : "")} onClick={() => setSection("models")}><Icon name="cpu" size={15} /> 模型设置</div>
-          <h3>Agent 能力</h3>
-          <div className={"mitem" + (section === "memory" ? " active" : "")} onClick={() => setSection("memory")}><Icon name="database" size={15} /> 记忆管理</div>
-          <div className={"mitem" + (section === "mcp" ? " active" : "")} onClick={() => setSection("mcp")}><Icon name="server" size={15} /> MCP 服务器</div>
-          <div className={"mitem" + (section === "skills" ? " active" : "")} onClick={() => setSection("skills")}><Icon name="zap" size={15} /> 技能</div>
-          <h3>其他</h3>
-          <div className={"mitem" + (section === "general" ? " active" : "")} onClick={() => setSection("general")}><Icon name="sliders" size={15} /> 常规</div>
-        </aside>
-        <div className="settings-content">{pages[section]}</div>
-      </div>
-    );
-  }
-
-  // —— 工作区（聊天）视图 ——
-  // 活动栏当前激活项：会话 / 代码下的三个子视图（与 VSCode 一致，点击已激活项收起侧栏）
-  const railActive = sideTab === "sessions" ? "sessions" : codeMode;
-  const toggleRail = (target: "sessions" | "tree" | "search" | "git") => {
-    const targetTab = target === "sessions" ? "sessions" : "files";
-    if (sidebarOpen && sideTab === targetTab && (target === "sessions" || codeMode === target)) {
-      setSidebarOpen(false);
-      return;
-    }
-    setSideTab(targetTab);
-    if (target !== "sessions") {
-      setCodeMode(target);
-      refreshFiles(); // 进代码面板即拉最新目录/git 状态
-    } else {
-      setShowProjects(false);
-    }
-    setSidebarOpen(true);
-  };
-  // 面板开关组（CodeBuddy 式三个 toggle）：左侧栏 / 终端 / 对话栏；对话栏收起后同组浮在编辑器右上角
+  // 面板开关组（CodeBuddy 式三个 toggle）：左侧栏 / 终端 / 对话栏
   const panelToggles = (
     <>
       <button
@@ -1760,8 +1718,73 @@ function App() {
       </button>
     </>
   );
+  // 顶栏（CodeBuddy 式）：按住可拖动窗口，右侧是面板开关；更右边的最小化/关闭由系统 WCO 绘制
+  const titlebar = (
+    <div className="titlebar">
+      <span className="tb-title">Y Harness</span>
+      <div className="panel-toggles">{panelToggles}</div>
+    </div>
+  );
+  if (view === "settings") {
+    const pages = { models: modelsPage, memory: memoryPage, mcp: mcpPage, skills: skillsPage, general: generalPage };
+    return (
+      <div className="root">
+        {titlebar}
+        <div className="settings-screen">
+        <aside className="settings-menu">
+          <div className="back" onClick={() => setView("chat")}>← 返回工作区</div>
+          {permission && (
+            <div className="perm-badge" onClick={() => { setView("chat"); }} title="有待审批请求，点击返回">
+              ⚠ 有待审批请求
+            </div>
+          )}
+          <h3>基础设置</h3>
+          <div className={"mitem" + (section === "models" ? " active" : "")} onClick={() => setSection("models")}><Icon name="cpu" size={15} /> 模型设置</div>
+          <h3>Agent 能力</h3>
+          <div className={"mitem" + (section === "memory" ? " active" : "")} onClick={() => setSection("memory")}><Icon name="database" size={15} /> 记忆管理</div>
+          <div className={"mitem" + (section === "mcp" ? " active" : "")} onClick={() => setSection("mcp")}><Icon name="server" size={15} /> MCP 服务器</div>
+          <div className={"mitem" + (section === "skills" ? " active" : "")} onClick={() => setSection("skills")}><Icon name="zap" size={15} /> 技能</div>
+          <h3>其他</h3>
+          <div className={"mitem" + (section === "general" ? " active" : "")} onClick={() => setSection("general")}><Icon name="sliders" size={15} /> 常规</div>
+        </aside>
+        <div className="settings-content">{pages[section]}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // —— 工作区（聊天）视图 ——
+  // 活动栏当前激活项：会话 / 代码下的三个子视图（与 VSCode 一致，点击已激活项收起侧栏）
+  const railActive = sideTab === "sessions" ? "sessions" : codeMode;
+  const toggleRail = (target: "sessions" | "tree" | "search" | "git") => {
+    // 会话键 = 对话/代码模式开关：点一下进对话模式（编辑器让位、对话占满主区），再点回代码模式（tab 全保留）
+    if (target === "sessions") {
+      if (editorOpen) {
+        setEditorOpen(false);
+        setSideTab("sessions");
+        setShowProjects(false);
+        setSidebarOpen(true);
+        setChatHidden(false); // 对话模式下对话栏必须可见，否则主区空白
+      } else {
+        setEditorOpen(true);
+      }
+      return;
+    }
+    // 代码类视图：总是回到代码模式
+    setEditorOpen(true);
+    if (sidebarOpen && sideTab === "files" && codeMode === target) {
+      setSidebarOpen(false);
+      return;
+    }
+    setSideTab("files");
+    setCodeMode(target);
+    refreshFiles(); // 进代码面板即拉最新目录/git 状态
+    setSidebarOpen(true);
+  };
   return (
-    <div className="app">
+    <div className="root">
+      {titlebar}
+      <div className="app">
       <div className="actbar">
         <button title="会话" className={railActive === "sessions" ? "on" : ""} onClick={() => toggleRail("sessions")}>
           <Icon name="chat" size={16} />
@@ -1948,9 +1971,21 @@ function App() {
           const sessionRow = (s: SessionInfo) => (
             <div
               key={s.session_id}
-              className={"sess" + (s.session_id === sessionId ? " active" : "")}
+              className={"sess" + (s.session_id === sessionId ? " active" : "") + (dragSid === s.session_id ? " dragging" : "")}
               draggable={groupBy === "group"}
-              onDragStart={(e) => e.dataTransfer.setData("text/session-id", s.session_id)}
+              onDragStart={(e) => {
+                if ((e.target as HTMLElement).closest(".actions")) {
+                  e.preventDefault();
+                  return;
+                }
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/session-id", s.session_id);
+                setDragSid(s.session_id);
+              }}
+              onDragEnd={() => {
+                setDragSid(null);
+                setDropTarget(null);
+              }}
               onClick={() => renaming?.id !== s.session_id && resume(s.session_id)}
             >
               <div className="sinfo">
@@ -2169,7 +2204,7 @@ function App() {
       </aside>
       )}
       <div className="ide">
-        <div className="ide-body">
+        <div className={"ide-body" + (!editorOpen ? " chatmode" : "")}>
       {editorOpen && (
         <>
           <div className="editor-col">
@@ -2201,7 +2236,11 @@ function App() {
                 setConflict(null);
               }}
               onConflictKeep={() => setConflict(null)}
-              onBrowse={() => setSideTab("files")}
+              onBrowse={() => {
+                setSideTab("files");
+                setCodeMode("tree");
+                setSidebarOpen(true);
+              }}
             />
             {termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
           </div>
@@ -2260,7 +2299,6 @@ function App() {
               </button>
             );
           })()}
-          <div className="panel-toggles">{panelToggles}</div>
         </header>
         {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
           <div className="ctx-pop" ref={ctxPopRef}>
@@ -2661,9 +2699,7 @@ function App() {
           </div>
         </div>
       </div>
-      {chatHidden && (
-        <div className="panel-toggles floated">{panelToggles}</div>
-      )}
+      {!editorOpen && termOpen && <TerminalPanel onClose={() => setTermOpen(false)} />}
       </div>
       </div>
       {switching && (
@@ -2741,7 +2777,8 @@ function App() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+      </div>
   );
 }
 

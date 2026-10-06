@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "node build.mjs && electron .",
     "start": "electron .",
+    "pack": "node build.mjs && node prepkg.cjs && node pack-fast.cjs",
     "dist": "node build.mjs && node prepkg.cjs && electron-builder --win",
     "dist:fast": "node build.mjs && node prepkg.cjs && electron-builder --win dir -c.compression=store"
   },
@@ -45,6 +46,7 @@
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "playwright": "^1.63.0",
+    "rcedit": "^5.0.1",
     "typescript": "^7.0.2"
   },
   "build": {

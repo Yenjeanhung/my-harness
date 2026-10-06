@@ -114,17 +114,69 @@ function killPortListeners(port) {
     });
   });
 }
+var gitCmdDir;
+function findGitCmdDir() {
+  if (gitCmdDir !== void 0) return gitCmdDir;
+  gitCmdDir = null;
+  const isWin = process.platform === "win32";
+  const exe = isWin ? "git.exe" : "git";
+  const has = (dir) => !!dir && import_fs.default.existsSync(import_path.default.join(dir, exe));
+  if ((process.env.PATH || "").split(import_path.default.delimiter).some(has)) return null;
+  const candidates = [];
+  if (isWin) {
+    try {
+      const out = (0, import_child_process.execSync)(
+        'reg query "HKLM\\SOFTWARE\\GitForWindows" /v InstallPath 2>nul & reg query "HKCU\\SOFTWARE\\GitForWindows" /v InstallPath 2>nul',
+        { encoding: "utf8", timeout: 3e3 }
+      );
+      for (const m of out.matchAll(/REG_SZ\s+(.+)/g)) {
+        const p = m[1].trim();
+        if (p) candidates.push(import_path.default.join(p, "cmd"));
+      }
+    } catch {
+    }
+    for (const key of ["HKCU\\Environment", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"]) {
+      try {
+        const out = (0, import_child_process.execSync)(`reg query "${key}" /v Path`, { encoding: "utf8", timeout: 3e3 });
+        const m = out.match(/REG_SZ\s+(.+)/);
+        for (const entry of (m?.[1] || "").split(";")) {
+          const p = entry.trim();
+          if (!p) continue;
+          candidates.push(p, import_path.default.join(p, "cmd"));
+        }
+      } catch {
+      }
+    }
+    for (const L of "DEFGHIJKLMNOPQRSTUVWXYZC".split("")) {
+      const root = `${L}:\\`;
+      if (!import_fs.default.existsSync(root)) continue;
+      candidates.push(import_path.default.join(root, "Git", "cmd"));
+      try {
+        for (const d of import_fs.default.readdirSync(root, { withFileTypes: true })) {
+          if (d.isDirectory()) candidates.push(import_path.default.join(root, d.name, "Git", "cmd"));
+        }
+      } catch {
+      }
+    }
+  } else {
+    candidates.push("/usr/bin", "/usr/local/bin", "/opt/homebrew/bin");
+  }
+  gitCmdDir = candidates.find(has) || null;
+  if (gitCmdDir) console.log(`[main] PATH \u4E0A\u6CA1\u6709 git\uFF0C\u5DF2\u8865\uFF1A${gitCmdDir}`);
+  return gitCmdDir;
+}
 function daemonEnv() {
   const env = { ...process.env };
-  const exe = process.platform === "win32" ? "rg.exe" : "rg";
-  const dirs = [
-    process.resourcesPath ? import_path.default.join(process.resourcesPath, "bin") : "",
-    import_path.default.join(__dirname, "build", "rg")
+  const isWin = process.platform === "win32";
+  const candidates = [
+    [process.resourcesPath ? import_path.default.join(process.resourcesPath, "bin") : "", isWin ? "rg.exe" : "rg"],
+    [import_path.default.join(__dirname, "build", "rg"), isWin ? "rg.exe" : "rg"]
   ];
-  for (const d of dirs) {
-    if (d && import_fs.default.existsSync(import_path.default.join(d, exe))) {
-      env.PATH = d + import_path.default.delimiter + (env.PATH || "");
-      break;
+  const git = findGitCmdDir();
+  if (git) candidates.push([git, isWin ? "git.exe" : "git"]);
+  for (const [dir, exe] of candidates) {
+    if (dir && import_fs.default.existsSync(import_path.default.join(dir, exe))) {
+      env.PATH = dir + import_path.default.delimiter + (env.PATH || "");
     }
   }
   return env;
@@ -187,11 +239,11 @@ import_electron.ipcMain.handle("term-create", async (_e, cols, rows) => {
   }
   const id = ptySeq++;
   const cwd = currentWorkspace();
-  const shell = process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
+  const shell2 = process.platform === "win32" ? "powershell.exe" : process.platform === "darwin" ? "zsh" : "bash";
   const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
   let pty;
   try {
-    pty = nodePty.spawn(shell, shellArgs, {
+    pty = nodePty.spawn(shell2, shellArgs, {
       name: "xterm-256color",
       cols: Math.max(20, Math.min(cols || 80, 500)),
       rows: Math.max(5, Math.min(rows || 24, 200)),
@@ -248,6 +300,13 @@ import_electron.app.whenReady().then(async () => {
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
   import_electron.ipcMain.handle("get-projects", () => loadProjects());
+  import_electron.ipcMain.handle("show-in-folder", (_e, rel) => {
+    const rootDir = terminalWorkspace || loadProjects().current || import_electron.app.getPath("home");
+    const abs = import_path.default.resolve(rootDir, String(rel || ""));
+    if (!import_fs.default.existsSync(abs)) return "missing";
+    import_electron.shell.showItemInFolder(abs);
+    return "ok";
+  });
   import_electron.ipcMain.handle("open-project", async (_e, p) => {
     if (!p || !import_fs.default.existsSync(p) || !import_fs.default.statSync(p).isDirectory()) return "invalid";
     const st = loadProjects();
@@ -288,6 +347,10 @@ import_electron.app.whenReady().then(async () => {
     height: 880,
     backgroundColor: "#111318",
     title: "Y Harness",
+    // CodeBuddy 式自绘顶栏：隐藏系统标题栏，网页延伸到顶（顶栏内放面板开关）；
+    // 右上角最小化/最大化/关闭仍由系统 WCO 绘制，height 必须与 .titlebar 的 CSS 高度一致
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#111318", symbolColor: "#c9d1d9", height: 36 },
     ...import_fs.default.existsSync(iconPath) ? { icon: iconPath } : {},
     webPreferences: {
       contextIsolation: true,

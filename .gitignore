@@ -10,3 +10,5 @@ packaging/build/
 my-harness.toml
 .my-harness/
 *.log
+apps/desktop/out/
+

@@ -6,6 +6,8 @@ import_electron.contextBridge.exposeInMainWorld("myharness", {
   pickFolder: () => import_electron.ipcRenderer.invoke("pick-folder"),
   getProjects: () => import_electron.ipcRenderer.invoke("get-projects"),
   openProject: (p) => import_electron.ipcRenderer.invoke("open-project", p),
+  // 文件树右键：在系统资源管理器里定位文件/文件夹
+  showInFolder: (rel) => import_electron.ipcRenderer.invoke("show-in-folder", rel),
   // —— 内嵌终端（node-pty 会话）——
   termCreate: (cols, rows) => import_electron.ipcRenderer.invoke("term-create", cols, rows),
   termInput: (id, data) => import_electron.ipcRenderer.send("term-input", id, data),

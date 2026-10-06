@@ -78,6 +78,35 @@ function sendCmd(cmd: WsCommand) {
   ws?.send(JSON.stringify(cmd));
 }
 
+// 心跳看门狗：TCP 半死（睡眠唤醒/静默断链）时 send 不报错、onclose 不触发，界面全部「没反应」。
+// 每 15s 发 Ping，10s 内无 Pong 判定连接已死 → 强制 close 走既有的 2s 自动重连。
+let hbTimer: ReturnType<typeof setInterval> | null = null;
+let hbAwaitingPong = false;
+let hbSeq = 0;
+function startHeartbeat() {
+  stopHeartbeat();
+  hbAwaitingPong = false;
+  hbTimer = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (hbAwaitingPong) {
+      try { ws.close(); } catch { /* 已关闭无所谓 */ }
+      return;
+    }
+    hbAwaitingPong = true;
+    const seq = ++hbSeq;
+    sendCmd({ type: "Ping" });
+    setTimeout(() => {
+      if (hbSeq === seq) hbAwaitingPong = false; // Pong 已到会推进 hbSeq，过期定时器不误清
+    }, 10000);
+  }, 15000);
+}
+function stopHeartbeat() {
+  if (hbTimer) {
+    clearInterval(hbTimer);
+    hbTimer = null;
+  }
+}
+
 const GROUP_ORDER = ["今天", "昨天", "本周", "本月", "更早"];
 
 function groupKey(lastActive: string): string {
@@ -342,7 +371,7 @@ function App() {
   const dirSeq = useRef(0);
   const [searchRes, setSearchRes] = useState<{ query: string; results: { path: string; line: number; col: number; text: string }[]; files: string[]; total: number; truncated: boolean } | null>(null);
   const [gitFiles, setGitFiles] = useState<Record<string, string>>({});
-  const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] }>({ repo: false, branch: "", files: [] });
+  const [gitScm, setGitScm] = useState<{ repo: boolean; branch: string; ahead: number; files: { path: string; code: string; xy: string }[] }>({ repo: false, branch: "", ahead: 0, files: [] });
   const [gitBranch, setGitBranch] = useState("");
   const [runChanged, setRunChanged] = useState<string[]>([]);
   const [chatRefs, setChatRefs] = useState<{ path: string; from: number; to: number }[]>([]); // 编辑器选区引用 chip（CodeBuddy 式）
@@ -503,12 +532,14 @@ function App() {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      startHeartbeat();
       sendCmd({ type: "ListSessions" }); // 由 SessionList 决定恢复最近会话或新建
       sendCmd({ type: "GetSettings" });
       // 重连场景：daemon 可能重启过（内存会话已丢），重新挂载当前会话，服务端回放 History 重建界面
       if (sessionIdRef.current) sendCmd({ type: "ResumeSession", session_id: sessionIdRef.current });
     };
     ws.onclose = () => {
+      stopHeartbeat();
       setConn("closed");
       scheduleReconnect();
     };
@@ -516,6 +547,10 @@ function App() {
     ws.onmessage = (ev) => {
       const e = JSON.parse(ev.data) as WsEvent;
       switch (e.type) {
+        case "Pong": // 心跳应答：重置看门狗
+          hbAwaitingPong = false;
+          hbSeq++;
+          break;
         case "SessionCreated":
           setSessionId(e.session_id);
           sessionIdRef.current = e.session_id; // 同步 ref：紧随其后的事件（ContextInfo/SessionCost）按会话过滤时不能读到旧值
@@ -740,15 +775,17 @@ function App() {
         case "GitStatus":
           setGitBranch(e.branch || "");
           setGitFiles(Object.fromEntries((e.files || []).map((f) => [f.path, f.code])));
-          setGitScm({ repo: e.repo !== false, branch: e.branch || "", files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })) });
+          setGitScm({ repo: e.repo !== false, branch: e.branch || "", ahead: e.ahead || 0, files: (e.files || []).map((f) => ({ ...f, xy: f.xy ?? f.code })) });
           break;
         case "GitDone":
           // stage/unstage/commit/push 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
           if (!e.ok) addItem({ kind: "error", text: `Git ${e.op} 失败：${e.message}` });
           else if (e.op === "commit")
             addItem({ kind: "notice", text: `已提交：${(e.message || "").split("\n")[0]}` });
-          else if (e.op === "push")
-            addItem({ kind: "notice", text: `已推送到远程：${(e.message || "").split("\n")[0]}` });
+          else if (e.op === "push") {
+            window.dispatchEvent(new CustomEvent("wb-pushdone", { detail: { ok: e.ok } })); // SCM 面板按钮复位
+            addItem({ kind: "notice", text: e.ok ? `已推送到远程：${(e.message || "").split("\n")[0]}` : `Git push 失败：${e.message}` });
+          }
           break;
         case "GitCommitMsg":
           // AI 生成的提交信息：转发给 Git 面板（生成失败也走同一事件，面板内提示）

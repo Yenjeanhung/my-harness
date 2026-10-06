@@ -161,7 +161,7 @@ export function FileTree(props: {
   searchRes: { query: string; results: { path: string; line: number; col: number; text: string }[]; files: string[]; total: number; truncated: boolean } | null;
   changed: string[];
   gitFiles: Record<string, string>;
-  scm: { repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] };
+  scm: { repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy: string }[] };
   refreshTick: number;
   onOpen(path: string, line?: number): void;
   onDiff(path: string): void;
@@ -183,7 +183,21 @@ export function FileTree(props: {
   const [newName, setNewName] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [commitMsg, setCommitMsg] = useState("");
+  const [pushing, setPushing] = useState(false); // 推送进行中：按钮禁用，GitDone(op=push) 经 wb-pushdone 复位
   const lastSeq = useRef(0);
+
+  useEffect(() => {
+    const onPushDone = () => setPushing(false);
+    window.addEventListener("wb-pushdone", onPushDone);
+    return () => window.removeEventListener("wb-pushdone", onPushDone);
+  }, []);
+
+  // 推送入口统一走这里：立即置 pending（按钮禁用），GitDone(op=push) → wb-pushdone 复位
+  const doPush = () => {
+    if (pushing) return;
+    setPushing(true);
+    props.onPush();
+  };
 
   // 服务端 DirListing → 缓存
   useEffect(() => {
@@ -351,6 +365,7 @@ export function FileTree(props: {
   };
 
   const root = entries[""] || [];
+  const ahead = props.scm.ahead || 0; // 本地领先远程的未推送提交数（标题栏推送按钮徽标）
   const searchGroups = new Map<string, { line: number; col: number; text: string }[]>();
   for (const h of props.searchRes?.results || []) {
     if (!searchGroups.has(h.path)) searchGroups.set(h.path, []);
@@ -465,8 +480,14 @@ export function FileTree(props: {
           <div className="ft-head">
             <span className="ft-head-title">源代码管理</span>
             <span className="ft-head-acts">
-              <button className="ft-b" title="推送到远程（git push）" onClick={props.onPush}>
+              <button
+                className="ft-b push-wrap"
+                disabled={pushing}
+                title={pushing ? "推送中…" : ahead > 0 ? `推送到远程（${ahead} 个未推送提交）` : "推送到远程（git push）"}
+                onClick={doPush}
+              >
                 <Icon name="push" size={13} />
+                {ahead > 0 && <b className="push-badge">{ahead}</b>}
               </button>
               <button className="ft-b" title="刷新（同步目录与 git 状态）" onClick={props.onRefresh}>
                 <Icon name="refresh" size={13} />
@@ -481,7 +502,7 @@ export function FileTree(props: {
             onStageAll={props.onStageAll}
             onUnstage={props.onUnstage}
             onCommit={props.onCommit}
-            onPush={props.onPush}
+            onPush={doPush}
             onGenMsg={props.onGenMsg}
             onDiff={props.onDiff}
             onOpen={props.onOpen}
@@ -494,7 +515,7 @@ export function FileTree(props: {
 
 // —— 源代码管理（VSCode 式）：提交信息 + 暂存/更改两栏 + stage/unstage ——
 function GitPanel(props: {
-  scm: { repo: boolean; branch: string; files: { path: string; code: string; xy: string }[] };
+  scm: { repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy: string }[] };
   msg: string;
   setMsg(v: string): void;
   onStage(path: string): void;
@@ -507,6 +528,7 @@ function GitPanel(props: {
   onOpen(path: string, line?: number): void;
 }) {
   const { scm } = props;
+  const ahead = scm.ahead || 0; // 未推送提交数：无可提交内容时该按钮退化为纯推送并显示计数
   const [genPending, setGenPending] = useState(false);
   // AI 生成的提交信息（app.tsx 转发的 wb-gitmsg 事件）→ 填进输入框
   useEffect(() => {
@@ -597,15 +619,20 @@ function GitPanel(props: {
           ✓ 提交{staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}
         </button>
         <button
-          className="git-commit-alt"
-          disabled={!canCommit}
-          title="提交并推送（commit + push）"
+          className="git-commit-alt push-wrap"
+          disabled={!canCommit && ahead === 0}
+          title={canCommit ? "提交并推送（commit + push）" : ahead > 0 ? `推送 ${ahead} 个未推送提交` : "提交并推送（commit + push）"}
           onClick={() => {
-            props.onCommit(props.msg.trim(), staged.length === 0, true);
-            props.setMsg("");
+            if (canCommit) {
+              props.onCommit(props.msg.trim(), staged.length === 0, true);
+              props.setMsg("");
+            } else {
+              props.onPush(); // 无可提交内容：纯推送本地已有的未推送提交（FileTree 的 doPush 统一管 pending 态）
+            }
           }}
         >
           <Icon name="push" size={13} />
+          {!canCommit && ahead > 0 && <b className="push-badge">{ahead}</b>}
         </button>
       </div>
       {scm.branch && <div className="git-branch">⑂ {scm.branch}</div>}

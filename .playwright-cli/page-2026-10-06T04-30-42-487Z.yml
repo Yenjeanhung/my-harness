@@ -1,0 +1,724 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - button "会话" [ref=e5] [cursor=pointer]
+    - button "资源管理器" [ref=e8] [cursor=pointer]
+    - button "搜索" [ref=e11] [cursor=pointer]
+    - button "8" [ref=e804] [cursor=pointer]
+  - complementary [ref=e20]:
+    - generic "默认目录（daemon 启动目录）" [ref=e806] [cursor=pointer]: 打开目录…
+    - generic [ref=e810]:
+      - generic [ref=e811]:
+        - generic [ref=e812]: 资源管理器
+        - generic [ref=e813]:
+          - button "新建文件" [ref=e814] [cursor=pointer]
+          - button "新建文件夹" [ref=e819] [cursor=pointer]
+          - button "刷新（同步目录与 git 状态）" [ref=e823] [cursor=pointer]
+          - button "折叠全部目录" [ref=e827] [cursor=pointer]
+          - button "收起侧栏" [ref=e831] [cursor=pointer]
+      - generic [ref=e834]:
+        - generic ".playwright-cli" [ref=e949] [cursor=pointer]: ▸
+        - generic ".zcode" [ref=e955] [cursor=pointer]: ▸
+        - generic "apps" [ref=e961] [cursor=pointer]: ▸
+        - generic "attachments" [ref=e967] [cursor=pointer]: ▸
+        - generic "evals" [ref=e973] [cursor=pointer]: ▸
+        - generic "examples" [ref=e979] [cursor=pointer]: ▸
+        - generic "packaging" [ref=e985] [cursor=pointer]: ▸
+        - generic "src" [ref=e991] [cursor=pointer]: ▸
+        - generic "tests" [ref=e997] [cursor=pointer]: ▸
+        - generic ".gitignore（悬浮 ✎ 可看改动 diff）" [ref=e1003] [cursor=pointer]: .gitignore
+        - generic "build-all.bat（悬浮 ✎ 可看改动 diff）" [ref=e1009] [cursor=pointer]: build-all.bat
+        - generic "DESIGN.md（悬浮 ✎ 可看改动 diff）" [ref=e1015] [cursor=pointer]: DESIGN.md
+        - generic "IDE-DESIGN.md（悬浮 ✎ 可看改动 diff）" [ref=e1021] [cursor=pointer]: IDE-DESIGN.md
+        - generic "my-harness.toml.example（悬浮 ✎ 可看改动 diff）" [ref=e1027] [cursor=pointer]: my-harness.toml.example
+        - generic "PACKAGING.md（悬浮 ✎ 可看改动 diff）" [ref=e1033] [cursor=pointer]: PACKAGING.md
+        - generic "PROTOCOL.md（悬浮 ✎ 可看改动 diff）" [ref=e1039] [cursor=pointer]: PROTOCOL.md
+        - generic "pyproject.toml（悬浮 ✎ 可看改动 diff）" [ref=e1045] [cursor=pointer]: pyproject.toml
+        - generic "README.md（悬浮 ✎ 可看改动 diff）" [ref=e1051] [cursor=pointer]:
+          - generic [ref=e1056]: README.md
+          - generic [ref=e1057]:
+            - button "查看改动 (diff)" [ref=e1058]
+            - button "重命名" [ref=e1061]
+            - button "删除（进回收站）" [ref=e1064]
+        - generic "scan_user.txt（悬浮 ✎ 可看改动 diff）" [ref=e1068] [cursor=pointer]: scan_user.txt
+    - generic [ref=e87]:
+      - generic [ref=e88]: 本
+      - generic [ref=e89]:
+        - generic [ref=e90]: 本地用户
+        - generic [ref=e91]: 本地模式 · 账号体系开发中
+      - button "⚙" [ref=e92] [cursor=pointer]
+  - generic [ref=e94]:
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic "README.md" [ref=e1074] [cursor=pointer]:
+          - button "×" [ref=e1076]
+        - button "预览" [ref=e1077] [cursor=pointer]
+        - button "保存" [ref=e1081] [cursor=pointer]
+      - generic [ref=e98]:
+        - generic [ref=e101]:
+          - generic [ref=e103]:
+            - generic [ref=e104]: "1"
+            - generic [ref=e1082]: "2"
+            - generic [ref=e1083]: "3"
+            - generic [ref=e1084]: "4"
+            - generic [ref=e1085]: "5"
+            - generic [ref=e1086]: "6"
+            - generic [ref=e1087]: "7"
+            - generic [ref=e1088]: "8"
+            - generic [ref=e1089]: "9"
+            - generic [ref=e1090]: "10"
+            - generic [ref=e1091]: "11"
+            - generic [ref=e1092]: "12"
+            - generic [ref=e1093]: "13"
+            - generic [ref=e1094]: "14"
+            - generic [ref=e1095]: "15"
+            - generic [ref=e1096]: "16"
+            - generic [ref=e1097]: "17"
+            - generic [ref=e1098]: "18"
+            - generic [ref=e1099]: "19"
+            - generic [ref=e1100]: "20"
+            - generic [ref=e1101]: "21"
+            - generic [ref=e1102]: "22"
+            - generic [ref=e1103]: "23"
+            - generic [ref=e1104]: "24"
+            - generic [ref=e1105]: "25"
+            - generic [ref=e1106]: "26"
+            - generic [ref=e1107]: "27"
+            - generic [ref=e1108]: "28"
+            - generic [ref=e1109]: "29"
+            - generic [ref=e1110]: "30"
+            - generic [ref=e1111]: "31"
+            - generic [ref=e1112]: "32"
+            - generic [ref=e1113]: "33"
+            - generic [ref=e1114]: "34"
+            - generic [ref=e1115]: "35"
+            - generic [ref=e1116]: "36"
+            - generic [ref=e1117]: "37"
+            - generic [ref=e1118]: "38"
+            - generic [ref=e1119]: "39"
+            - generic [ref=e1120]: "40"
+            - generic [ref=e1121]: "41"
+            - generic [ref=e1122]: "42"
+            - generic [ref=e1123]: "43"
+            - generic [ref=e1124]: "44"
+            - generic [ref=e1125]: "45"
+            - generic [ref=e1126]: "46"
+            - generic [ref=e1127]: "47"
+            - generic [ref=e1128]: "48"
+            - generic [ref=e1129]: "49"
+            - generic [ref=e1130]: "50"
+            - generic [ref=e1131]: "51"
+            - generic [ref=e1132]: "52"
+            - generic [ref=e1133]: "53"
+            - generic [ref=e1134]: "54"
+            - generic [ref=e1135]: "55"
+            - generic [ref=e1136]: "56"
+            - generic [ref=e1137]: "57"
+            - generic [ref=e1138]: "58"
+            - generic [ref=e1139]: "59"
+            - generic [ref=e1140]: "60"
+            - generic [ref=e1141]: "61"
+            - generic [ref=e1142]: "62"
+            - generic [ref=e1143]: "63"
+            - generic [ref=e1144]: "64"
+            - generic [ref=e1145]: "65"
+            - generic [ref=e1146]: "66"
+            - generic [ref=e1147]: "67"
+            - generic [ref=e1148]: "68"
+            - generic [ref=e1149]: "69"
+            - generic [ref=e1150]: "70"
+            - generic [ref=e1151]: "71"
+            - generic [ref=e1152]: "72"
+            - generic [ref=e1153]: "73"
+            - generic [ref=e1154]: "74"
+            - generic [ref=e1155]: "75"
+            - generic [ref=e1156]: "76"
+            - generic [ref=e1157]: "77"
+            - generic [ref=e1158]: "78"
+            - generic [ref=e1159]: "79"
+            - generic [ref=e1160]: "80"
+            - generic [ref=e1161]: "81"
+            - generic [ref=e1162]: "82"
+            - generic [ref=e1163]: "83"
+            - generic [ref=e1164]: "84"
+            - generic [ref=e1165]: "85"
+            - generic [ref=e1166]: "86"
+            - generic [ref=e1167]: "87"
+            - generic [ref=e1168]: "88"
+            - generic [ref=e1169]: "89"
+            - generic [ref=e1170]: "90"
+            - generic [ref=e1171]: "91"
+            - generic [ref=e1172]: "92"
+            - generic [ref=e1173]: "93"
+            - generic [ref=e1174]: "94"
+            - generic [ref=e1175]: "95"
+            - generic [ref=e1176]: "96"
+            - generic [ref=e1177]: "97"
+            - generic [ref=e1178]: "98"
+            - generic [ref=e1179]: "99"
+            - generic [ref=e1180]: "100"
+            - generic [ref=e1181]: "101"
+            - generic [ref=e1182]: "102"
+            - generic [ref=e1183]: "103"
+            - generic [ref=e1184]: "104"
+          - textbox [ref=e105]:
+            - generic [ref=e106]: "# My-Harness"
+            - generic [ref=e1186]: "> **你的模型，你的数据，你的 harness。**"
+            - generic [ref=e1187]: "> Any model. Local first. Fully programmable."
+            - generic [ref=e1189]: "- **模型中立** —— 任何 OpenAI 兼容端点自由接入：GLM / DeepSeek / Kimi / 通义 / OpenAI / Anthropic / Ollama 本机 / 私有中转。多套配置保存为列表、一键切换（同时一个生效），思考档位按厂商适配（GLM：thinking 开关 + reasoning_effort；OpenAI 系：reasoning_effort）。不绑定任何厂商，不做预设模型清单。"
+            - generic [ref=e1190]: "- **本地优先** —— 会话 = 本机 append-only 事件流（SQLite + JSONL），写入时预计算全文搜索列（ZCode 同款架构），跨会话搜索不扫 JSON；token 用量与近似费用逐轮落库，聊天顶栏与设置页直接可见；无账号、无云同步、无遥测，数据目录一键打开。"
+            - generic [ref=e1191]: "- **完全可编程** —— daemon 即服务：WS 协议全量文档化（[PROTOCOL.md](PROTOCOL.md)），任何语言都能驱动同一个内核，CLI 与桌面端只是两个参考客户端；`harness run --json` 提供 headless JSONL 事件流；MCP + Skills + Hooks 可扩展。"
+            - generic [ref=e1193]: "## 本机实测（2026-10-04 · Windows · 单次运行）"
+            - generic [ref=e1195]: "| 指标 | 数值 |"
+            - generic [ref=e1196]: "|---|---|"
+            - generic [ref=e1197]: "| daemon 冷启动（venv `harness serve` → /health 可用） | **~1.1s**，常驻内存 ~51MB |"
+            - generic [ref=e1198]: "| sidecar 首次启动（onefile 自解压） | ~7.4s，常驻内存 ~48MB |"
+            - generic [ref=e1199]: "| 便携版磁盘占用（win-unpacked，含 Electron + sidecar） | ~372MB（对照：本机 ZCode 安装目录 ~733MB） |"
+            - generic [ref=e1200]: "| Windows 安装包（NSIS，内嵌 sidecar） | ~172MB |"
+            - generic [ref=e1202]: "> 实测说明：内存为 daemon 就绪后 RSS；对照项只比磁盘占用，未测对方进程内存，不作无依据声明。"
+            - generic [ref=e1204]: 从零构建的 LLM Agent Harness，设计见 [DESIGN.md](DESIGN.md)（含 23 个主流开源项目调研、架构、模块设计、选型决策记录），协议见 [PROTOCOL.md](PROTOCOL.md)，打包见 [PACKAGING.md](PACKAGING.md)。
+            - generic [ref=e1206]: "**当前进度：M0-M4 核心全部落地**（详见 DESIGN.md 路线图）："
+            - generic [ref=e1208]: "- ✅ **M0 内核**：事件溯源（SQLite+JSONL 双写）、ReAct 循环、内置工具、CLI 流式、resume"
+            - generic [ref=e1209]: "- ✅ **M1 上下文与安全**：三级压缩管道、权限规则引擎（5 模式）、Hooks、MCP 客户端（stdio+HTTP）、Local Server（WS 事件协议）、Shadow 快照/回滚"
+            - generic [ref=e1210]: "- ✅ **M2 记忆与技能**：memory blocks（短期）、事件检索（情景）、facts.md+记忆工具（语义）、AGENT.md（程序性）、后台事实整合、Skills 渐进披露"
+            - generic [ref=e1211]: "- ✅ **M3 多智能体**：spawn_subagent（隔离上下文+摘要回传+预算树）、Docker 沙箱（bash 进容器、网络默认关）"
+            - generic [ref=e1212]: "- ✅ **M4 生产化**：成本核算（`harness cost` + 桌面端逐轮/会话级成本显示）、评测 harness（`harness eval`，pass@k/pass^k）、**Electron 桌面端**（首启引导连接模型/流式对话/工具卡片/审批 UI/本机统计）、**可编程协议**（PROTOCOL.md + `run --json` headless）"
+            - generic [ref=e1213]: "- ⬜ 后续：OTLP 导出、插件打包分发、A2A、Team 对等协作、桌面端签名分发"
+            - generic [ref=e1215]: "## 安装"
+            - generic [ref=e1217]: "```bash"
+            - generic [ref=e1218]: cd my-harness
+            - generic [ref=e1219]: python -m venv .venv
+            - generic [ref=e1220]: ".venv/Scripts/pip install -e \".[dev]\" # Windows；Unix: .venv/bin/pip"
+            - generic [ref=e1221]: "```"
+            - generic [ref=e1223]: 配置模型（LiteLLM 格式）与密钥：
+            - generic [ref=e1225]: "```bash"
+            - generic [ref=e1226]: "copy my-harness.toml.example my-harness.toml # 改 model 一行"
+            - generic [ref=e1227]: "set OPENAI_API_KEY=sk-... # 或 DEEPSEEK_API_KEY / ZHIPUAI_API_KEY / ANTHROPIC_API_KEY"
+            - generic [ref=e1228]: "```"
+            - generic [ref=e1230]: "## 用法"
+            - generic [ref=e1232]: "```bash"
+            - generic [ref=e1233]: "harness chat # 交互式对话（流式 + 权限审批 + 自动压缩 + 记忆 + MCP + subagent）"
+            - generic [ref=e1234]: "harness chat --session <id> # 恢复历史会话（事件溯源，进程重启可续）"
+            - generic [ref=e1235]: "harness run \"统计 src 下有多少行 Python 代码\" # 一次性任务（结束自动整合记忆）"
+            - generic [ref=e1236]: "harness run \"...\" --json # headless：JSONL 事件流输出，供脚本消费"
+            - generic [ref=e1237]: "harness sessions # 列出历史会话"
+            - generic [ref=e1238]: "harness cost # 按会话汇总 token 与费用"
+            - generic [ref=e1239]: "harness eval evals/tasks --trials 2 # 跑评测集，输出 pass@1 / pass^k"
+            - generic [ref=e1240]: "harness serve --port 8765 # 本地 daemon：WS 协议（桌面端复用，见 PROTOCOL.md）"
+            - generic [ref=e1241]: "```"
+            - generic [ref=e1243]: "斜杠命令（chat 内）：`/new /sessions /memory /model <m> /mode <m> /rollback [id] /exit`"
+            - generic [ref=e1245]: "## 桌面端（Electron）"
+            - generic [ref=e1247]: "```bash"
+            - generic [ref=e1248]: cd apps/desktop
+            - generic [ref=e1249]: "npm install # 已配置 npmmirror 可用时更快"
+            - generic [ref=e1250]: "npm run dev # 自动拉起 harness serve（或附着已有 daemon）+ 打开窗口"
+            - generic [ref=e1251]: "```"
+            - generic [ref=e1253]: "桌面端是 Local Server 的协议客户端：首次打开先引导连接你自己的模型（厂商下拉 + 自由填写模型名/Base URL，可一键测试连通性）；流式对话、工具调用卡片（✓/✗）、审批卡片（仅本次/总是/拒绝）；聊天顶栏实时显示本轮与会话累计 token 用量及近似费用；设置页「常规」提供本机统计（会话/消息/累计费用/事件库大小）与数据目录一键打开。内核 `pip install -e .` 需先装好且 `harness` 在 PATH 中。"
+            - generic [ref=e1255]: 程序化使用见 [examples/quickstart.py](examples/quickstart.py)。
+            - generic [ref=e1257]: "## 结构"
+            - generic [ref=e1259]: "```"
+            - generic [ref=e1260]: src/harness/
+            - generic [ref=e1261]: "├── core/ # 事件溯源（SQLite+JSONL 双写）、规范化消息、Session/View（压缩可重放）"
+            - generic [ref=e1262]: "├── providers/ # LiteLLM Provider（100+ 模型，流式 + 工具调用规范化）"
+            - generic [ref=e1263]: "├── loop/ # ReAct 主循环（预算树、权限闸、压缩、blocks 注入、回调）"
+            - generic [ref=e1264]: "├── tools/ # 注册表 + 内置工具（ACI 准则）+ MCP 客户端 + Skills 渐进披露"
+            - generic [ref=e1265]: "├── memory/ # 四层记忆：blocks（短期）/事件检索（情景）/facts.md（语义）/AGENT.md（程序性）+ 整合器"
+            - generic [ref=e1266]: "├── context/ # 上下文引擎：大结果外置 / 工具结果清理 / 85% 摘要压缩"
+            - generic [ref=e1267]: "├── security/ # 权限引擎（5 模式 + 规则）+ Docker 沙箱"
+            - generic [ref=e1268]: "├── orchestrator/ # spawn_subagent（隔离上下文 + 摘要回传）+ orchestrator 模板"
+            - generic [ref=e1269]: "├── extension/ # 生命周期 Hooks（shell 命令，exit 2 / JSON block 可阻断）"
+            - generic [ref=e1270]: "├── persistence/ # Shadow 快照/回滚（write/edit 前自动快照，/rollback 恢复）"
+            - generic [ref=e1271]: "├── server/ # Local Server：FastAPI + WS 事件协议（审批流往返）"
+            - generic [ref=e1272]: "├── observability/ # 成本核算（pricing 表 + harness cost）"
+            - generic [ref=e1273]: "├── evals/ # 评测 harness：Task/Trial/Grader，pass@k / pass^k"
+            - generic [ref=e1274]: "├── interfaces/ # CLI：chat / run / sessions / cost / eval / serve"
+            - generic [ref=e1275]: └── config.py
+            - generic [ref=e1276]: "apps/desktop/ # Electron 桌面端（main 进程 + React 渲染，WS 协议客户端）"
+            - generic [ref=e1277]: "evals/tasks/ # 示例评测用例"
+            - generic [ref=e1278]: "```"
+            - generic [ref=e1280]: "## 路线图（DESIGN.md §8）"
+            - generic [ref=e1282]: "- **M0 内核跑通** ← 当前"
+            - generic [ref=e1283]: "- M1 上下文与安全：三级压缩管道、权限规则引擎、hooks、MCP 客户端、Local Server"
+            - generic [ref=e1284]: "- M2 记忆与技能：memory blocks、AGENT.md、语义记忆、Skills"
+            - generic [ref=e1285]: "- M3 多智能体：subagent、orchestrator-worker、handoff、Docker 沙箱"
+            - generic [ref=e1286]: "- M4 生产化与桌面端：OTel、评测 harness、Electron + React 19 桌面端"
+        - generic "报错总览（点击标记跳转，F8 下一条）" [ref=e107]
+        - button "AI" [ref=e110] [cursor=pointer]
+    - generic "拖拽调对话栏宽 · 双击复位" [ref=e118]
+    - generic [ref=e119]:
+      - banner [ref=e120]:
+        - generic "my-harness项目分析" [ref=e122]
+        - button "7%" [ref=e123] [cursor=pointer]
+        - button "»" [ref=e127] [cursor=pointer]
+        - button "关闭编辑器（对话占满主区）" [ref=e128] [cursor=pointer]
+        - button "打开终端" [ref=e132] [cursor=pointer]
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]: hi
+          - button "从此消息开启分支会话" [ref=e139] [cursor=pointer]
+        - generic [ref=e144]:
+          - paragraph [ref=e146]: Hi! I'm ready to help you with coding tasks in your workspace. What would you like to work on?
+          - generic [ref=e147]:
+            - button "复制内容" [ref=e148] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e152] [cursor=pointer]
+        - generic [ref=e157]:
+          - generic [ref=e158]: 你能做什么
+          - button "从此消息开启分支会话" [ref=e160] [cursor=pointer]
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - paragraph [ref=e167]: 我是一个运行在 My-Harness 里的编程助手，可以在这个工作区里做这些事情：
+            - paragraph [ref=e168]:
+              - strong [ref=e169]: 文件操作
+            - list [ref=e170]:
+              - listitem [ref=e171]: 读取、创建、修改文件
+              - listitem [ref=e172]: 按模式搜索文件名（glob）、按正则搜索文件内容（grep）
+            - paragraph [ref=e173]:
+              - strong [ref=e174]: 执行命令
+            - list [ref=e175]:
+              - listitem [ref=e176]: 运行 shell 命令（PowerShell/bash），比如安装依赖、运行测试、构建项目
+            - paragraph [ref=e177]:
+              - strong [ref=e178]: 代码相关
+            - list [ref=e179]:
+              - listitem [ref=e180]: 阅读、理解、调试代码
+              - listitem [ref=e181]: 编写新功能、修复 bug、重构
+              - listitem [ref=e182]: 运行和验证改动
+            - paragraph [ref=e183]:
+              - strong [ref=e184]: 记忆能力
+            - list [ref=e185]:
+              - listitem [ref=e186]: 跨会话记住项目相关的信息和决定
+              - listitem [ref=e187]: 搜索历史对话内容
+            - paragraph [ref=e188]:
+              - strong [ref=e189]: 其他
+            - list [ref=e190]:
+              - listitem [ref=e191]: 可以派出子代理（subagent）并行处理独立的子任务
+              - listitem [ref=e192]: 可以加载特定技能（skill）来完成专门任务
+            - paragraph [ref=e193]:
+              - text: 当前工作区是
+              - code [ref=e194]: D:\myWorkspace\AI_project\my-harness\apps\desktop\dist\win-unpacked
+              - text: 。
+            - paragraph [ref=e195]: 你想做什么？比如可以让我：
+            - list [ref=e196]:
+              - listitem [ref=e197]: 查看工作区里有什么内容
+              - listitem [ref=e198]: 帮你分析或修改某个项目
+              - listitem [ref=e199]: 运行某个脚本或命令
+          - generic [ref=e200]:
+            - button "复制内容" [ref=e201] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e205] [cursor=pointer]
+        - generic [ref=e210]:
+          - generic [ref=e211]: hi
+          - button "从此消息开启分支会话" [ref=e213] [cursor=pointer]
+        - generic [ref=e218]:
+          - generic [ref=e219]:
+            - paragraph [ref=e220]: 你好！有什么我可以帮你的吗？😊
+            - paragraph [ref=e221]: 可以告诉我你想做的事情，比如：
+            - list [ref=e222]:
+              - listitem [ref=e223]: 📁 查看当前工作区的内容
+              - listitem [ref=e224]: 🔍 分析代码、查找文件
+              - listitem [ref=e225]: ✏️ 修改代码、修复 bug
+              - listitem [ref=e226]: ⚙️ 运行命令、构建项目
+            - paragraph [ref=e227]: 随时告诉我你的需求！
+          - generic [ref=e228]:
+            - button "复制内容" [ref=e229] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e233] [cursor=pointer]
+        - generic [ref=e238]:
+          - generic [ref=e239]: 你现在开了思考模式吗
+          - button "从此消息开启分支会话" [ref=e241] [cursor=pointer]
+        - generic [ref=e246]:
+          - generic [ref=e247]:
+            - paragraph [ref=e248]: 是的，我在回答和执行任务时会先进行内部思考（推理），比如分析问题、规划步骤、检查工具调用结果等，然后再给出回复。
+            - paragraph [ref=e249]: 不过需要说明的是：
+            - list [ref=e250]:
+              - listitem [ref=e251]:
+                - strong [ref=e252]: 我能感知到自己在推理
+                - text: ，但
+                - strong [ref=e253]: 看不到
+                - text: 你的客户端界面上是否有"思考过程"的展示面板
+              - listitem [ref=e254]: 是否显示思考内容取决于 My-Harness 前端的设置和实现
+            - paragraph [ref=e255]: 如果你在界面上没有看到思考过程展示，可以检查一下 harness 的相关配置。有什么编程任务需要帮忙吗？
+          - generic [ref=e256]:
+            - button "复制内容" [ref=e257] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e261] [cursor=pointer]
+        - generic [ref=e266]:
+          - generic [ref=e267]: 我把思考关了，现在还有吗
+          - button "从此消息开启分支会话" [ref=e269] [cursor=pointer]
+        - generic [ref=e274]:
+          - generic [ref=e275]:
+            - paragraph [ref=e276]: 从我这边来说，我无法直接感知你客户端的设置变化——我内部的处理方式（分析、规划）是我运作的一部分，我无法确认你的界面现在是否还展示思考过程。
+            - paragraph [ref=e277]: 判断方法很简单：
+            - list [ref=e278]:
+              - listitem [ref=e279]: 如果你界面上不再显示"思考中 / Thinking"之类的展开内容，说明展示已关闭
+              - listitem [ref=e280]: 这不影响我的回答质量，只是不再把推理过程展示给你
+            - paragraph [ref=e281]: 需要我帮你测试一下，或者有实际任务要处理吗？
+          - generic [ref=e282]:
+            - button "复制内容" [ref=e283] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e287] [cursor=pointer]
+        - generic [ref=e292]:
+          - generic [ref=e293]: 打开chrome进入B站
+          - button "从此消息开启分支会话" [ref=e295] [cursor=pointer]
+        - 'generic "{\"command\":\"start chrome \\\"https://www.bilibili.com\\\" 2>&1; if ($?) { \\\"OK\\\" }\"}" [ref=e300]':
+          - generic [ref=e304]: 终端
+          - generic [ref=e305]: "start chrome \"https://www.bilibili.com\" 2>&1; if ($?) { \"OK\" }"
+          - generic [ref=e306]: ✓
+        - generic [ref=e307]:
+          - paragraph [ref=e309]: 我没有浏览器控制工具，但可以用命令帮你打开系统的 Chrome 并访问 B 站，试一下：
+          - generic [ref=e310]:
+            - button "复制内容" [ref=e311] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e315] [cursor=pointer]
+        - generic [ref=e320]:
+          - generic [ref=e321]:
+            - paragraph [ref=e322]:
+              - text: ✅ 命令已执行，应该已经用系统默认的 Chrome 打开了 B 站（
+              - link "https://www.bilibili.com）。" [ref=e323] [cursor=pointer]:
+                - /url: https://www.bilibili.com%EF%BC%89%E3%80%82
+            - paragraph [ref=e324]:
+              - text: 如果没有弹出来，可能 Chrome 没有加入系统 PATH，告诉我，我可以尝试通过完整路径（如
+              - code [ref=e325]: C:\Program Files\Google\Chrome\Application\chrome.exe
+              - text: ）启动。
+          - generic [ref=e326]:
+            - button "复制内容" [ref=e327] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e331] [cursor=pointer]
+        - generic [ref=e336]:
+          - generic [ref=e337]: 搜索大模型面试
+          - button "从此消息开启分支会话" [ref=e339] [cursor=pointer]
+        - 'generic "{\"command\":\"start chrome \\\"https://www.bilibili.com/search?keyword=%E5%A4%A7%E6%A8%A1%E5%9E%8B%E9%9D%A2%E8%AF%95\\\" 2>&1; if ($?) { \\\"OK\\\" }\"}" [ref=e344]':
+          - generic [ref=e348]: 终端
+          - generic [ref=e349]: "start chrome \"https://www.bilibili.com/search?keyword=%E5%A4%A7%E6%A8%A1%E5%9E%8B%E9%9D%A2%E8%AF%95\" 2>&1; if ($?) { \"OK\" }"
+          - generic [ref=e350]: ✓
+        - 'generic "{\"command\":\"start chrome \\\"https://search.bilibili.com/all?keyword=%E5%A4%A7%E6%A8%A1%E5%9E%8B%E9%9D%A2%E8%AF%95\\\" 2>&1; if ($?) { \\\"OK\\\" }\"}" [ref=e351]':
+          - generic [ref=e355]: 终端
+          - generic [ref=e356]: "start chrome \"https://search.bilibili.com/all?keyword=%E5%A4%A7%E6%A8%A1%E5%9E%8B%E9%9D%A2%E8%AF%95\" 2>&1; if ($?) { \"OK\" }"
+          - generic [ref=e357]: ✓
+        - generic [ref=e358]:
+          - paragraph [ref=e360]:
+            - text: ✅ 已执行。不过提醒一下：B 站的搜索页正确地址是
+            - code [ref=e361]: search.bilibili.com
+            - text: ，刚才的链接可能打不开搜索结果。我重新打开正确的：
+          - generic [ref=e362]:
+            - button "复制内容" [ref=e363] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e367] [cursor=pointer]
+        - generic [ref=e372]:
+          - generic [ref=e373]:
+            - paragraph [ref=e374]: ✅ 已在 Chrome 中打开 B 站搜索「大模型面试」的结果页，看看有没有弹出来。
+            - paragraph [ref=e375]: 顺便说明：我这边只能做到"打开网址"这一步，页面内容（登录、播放视频等交互）需要你自己操作。需要我再搜索其他关键词吗？
+          - generic [ref=e376]:
+            - button "复制内容" [ref=e377] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e381] [cursor=pointer]
+        - generic [ref=e386]:
+          - generic [ref=e387]:
+            - img "附件图片" [ref=e389]
+            - text: 为啥记忆里没有东西
+          - button "从此消息开启分支会话" [ref=e391] [cursor=pointer]
+        - generic [ref=e396]:
+          - generic [ref=e397]:
+            - paragraph [ref=e398]: 因为记忆不是自动记录的——只有当我主动调用记忆工具写入时才会有内容，而我们之前只是聊天和开浏览器，没有触发过写入。
+            - paragraph [ref=e399]: 记忆分两类：
+            - list [ref=e400]:
+              - listitem [ref=e401]:
+                - strong [ref=e402]: 工作记忆（blocks）
+                - text: ：当前会话的临时状态，需要我用
+                - code [ref=e403]: block_set
+                - text: 写入
+              - listitem [ref=e404]:
+                - strong [ref=e405]: 长期记忆
+                - text: ：跨会话的 Markdown 文件，需要我用
+                - code [ref=e406]: memory_write
+                - text: 创建
+            - paragraph [ref=e407]: 我可以现在写一点内容作为演示，你想让我记住什么？比如「用户在做大模型面试准备」之类的信息，我写进去后你刷新页面就能看到了。
+          - generic [ref=e408]:
+            - button "复制内容" [ref=e409] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e413] [cursor=pointer]
+        - generic [ref=e418]:
+          - generic [ref=e419]: 我这个harness和其它市面上的harness有啥优势，能不能再想几个具有区分性竞争优势的功能
+          - button "从此消息开启分支会话" [ref=e421] [cursor=pointer]
+        - 'generic "{\"command\":\"Get-ChildItem \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\" -Depth 1 | Select-Object FullName | Format-Table -AutoSize\"}" [ref=e426]':
+          - generic [ref=e430]: 终端
+          - generic [ref=e431]: Get-ChildItem "D:\myWorkspace\AI_project\my-harness" -Depth 1 | Select-Object FullName | Format-Table -AutoSize
+          - generic [ref=e432]: ✓
+        - generic [ref=e433]:
+          - paragraph [ref=e435]: 好问题。让我先看一下你这个项目的实际结构，了解它已有哪些能力，再对比市面上的产品给出分析。
+          - generic [ref=e436]:
+            - button "复制内容" [ref=e437] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e441] [cursor=pointer]
+        - generic [ref=e446]:
+          - generic [ref=e447]: 继续
+          - button "从此消息开启分支会话" [ref=e449] [cursor=pointer]
+        - 'generic "{\"command\":\"Get-ChildItem \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\" | Select-Object Name, Mode | Format-Table -AutoSize; Get-ChildItem \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\apps\\\" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize\"}" [ref=e454]':
+          - generic [ref=e458]: 终端
+          - generic [ref=e459]: Get-ChildItem "D:\myWorkspace\AI_project\my-harness" | Select-Object Name, Mode | Format-Table -AutoSize; Get-ChildItem "D:\myWorkspace\AI_project\my-harness\ap
+          - generic [ref=e460]: ✓
+        - 'generic "{\"command\":\"Get-Content \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\README.md\\\" -TotalCount 80\"}" [ref=e461]':
+          - generic [ref=e465]: 终端
+          - generic [ref=e466]: Get-Content "D:\myWorkspace\AI_project\my-harness\README.md" -TotalCount 80
+          - generic [ref=e467]: ✓
+        - 'generic "{\"command\":\"Get-ChildItem \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\" -Recurse -Directory | Select-Object FullName | Format-Table -AutoSize\"}" [ref=e468]':
+          - generic [ref=e472]: 终端
+          - generic [ref=e473]: Get-ChildItem "D:\myWorkspace\AI_project\my-harness\src" -Recurse -Directory | Select-Object FullName | Format-Table -AutoSize
+          - generic [ref=e474]: ✓
+        - generic [ref=e475]:
+          - generic [ref=e476]:
+            - paragraph [ref=e477]: 看完了 README 和代码结构，基于你实际已实现的功能来分析。
+            - heading "一、你现有的优势（对比市面产品）" [level=2] [ref=e478]
+            - table [ref=e479]:
+              - rowgroup [ref=e480]:
+                - row [ref=e481]:
+                  - columnheader "维度" [ref=e482]
+                  - columnheader "你的 Harness" [ref=e483]
+                  - columnheader "主流竞品" [ref=e484]
+                  - columnheader "差异程度" [ref=e485]
+              - rowgroup [ref=e486]:
+                - row [ref=e487]:
+                  - cell [ref=e488]:
+                    - strong [ref=e489]: 模型中立
+                  - cell "任意 OpenAI 兼容端点，多配置一键切换，思考档位按厂商适配" [ref=e490]
+                  - cell "Claude Code 绑定 Anthropic；Codex CLI 绑定 OpenAI；Cursor 需订阅" [ref=e491]
+                  - cell "⭐⭐⭐⭐" [ref=e492]
+                - row [ref=e493]:
+                  - cell [ref=e494]:
+                    - strong [ref=e495]: 本地优先 + 事件溯源
+                  - cell "SQLite+JSONL 双写、写入时预计算全文搜索列、跨会话搜索" [ref=e496]
+                  - cell "大部分工具会话历史是黑盒或只能翻 JSONL" [ref=e497]
+                  - cell "⭐⭐⭐⭐" [ref=e498]
+                - row [ref=e499]:
+                  - cell [ref=e500]:
+                    - strong [ref=e501]: 成本透明
+                  - cell [ref=e502]:
+                    - text: 逐轮/会话级 token+费用落库，顶栏可见，
+                    - code [ref=e503]: harness cost
+                  - cell [ref=e504]:
+                    - text: Claude Code 有
+                    - code [ref=e505]: /cost
+                    - text: 但粒度粗；多数桌面端没有
+                  - cell "⭐⭐⭐" [ref=e506]
+                - row [ref=e507]:
+                  - cell [ref=e508]:
+                    - strong [ref=e509]: 可编程协议
+                  - cell "PROTOCOL.md 全量文档化 WS 协议，任何语言驱动同一内核，headless JSONL" [ref=e510]
+                  - cell "多数 agent 的 UI 和内核耦合，无法替换客户端" [ref=e511]
+                  - cell "⭐⭐⭐⭐" [ref=e512]
+                - row [ref=e513]:
+                  - cell [ref=e514]:
+                    - strong [ref=e515]: 评测内建
+                  - cell [ref=e516]:
+                    - code [ref=e517]: harness eval
+                    - text: pass@k/pass^k
+                  - cell [ref=e518]:
+                    - strong [ref=e519]: 几乎没有竞品内建评测
+                    - text: ，这是最大空白点之一
+                  - cell "⭐⭐⭐⭐⭐" [ref=e520]
+                - row [ref=e521]:
+                  - cell [ref=e522]:
+                    - strong [ref=e523]: Shadow 快照/回滚
+                  - cell [ref=e524]:
+                    - text: write/edit 前自动快照，
+                    - code [ref=e525]: /rollback
+                  - cell "Claude Code 有 checkpoints（较新）；开源系大多没有" [ref=e526]
+                  - cell "⭐⭐⭐" [ref=e527]
+                - row [ref=e528]:
+                  - cell [ref=e529]:
+                    - strong [ref=e530]: 体积
+                  - cell "372MB 便携版" [ref=e531]
+                  - cell "对照 733MB" [ref=e532]
+                  - cell "⭐⭐" [ref=e533]
+            - paragraph [ref=e534]:
+              - strong [ref=e535]: 一句话定位
+              - text: ：你不是在跟 Claude Code 比模型，而是在做「
+              - strong [ref=e536]: 模型无关 + 数据自主 + 可编程
+              - text: 」这个它们商业上不会做的事——类似 harness 界的"自托管"路线。
+            - heading "二、有区分性的新功能建议" [level=2] [ref=e537]
+            - paragraph [ref=e538]: 按「别人难以跟进 + 复用你现有架构」筛选：
+            - paragraph [ref=e539]:
+              - strong [ref=e540]: 1. 会话时间机（分支时间线）
+              - text: 🌟 最推荐你已经是 append-only 事件流了，
+              - code [ref=e541]: /rollback
+              - text: 只差一步：从
+              - strong [ref=e542]: 任意历史事件分叉出新时间线
+              - text: ，同一任务跑多条路径对比结果。竞品只有"撤销"，你有"平行宇宙"。
+            - paragraph [ref=e543]:
+              - strong [ref=e544]: 2. 用你自己的任务集评测任意模型
+              - text: 🌟把 evals 和模型中立打通：同一批真实任务，一键跑 GLM vs DeepSeek vs 本地 Ollama，输出 pass@k + 成本 + 耗时对比报告。市面 benchmark 是别人的任务集，"
+              - strong [ref=e545]: 在我的工作负载上谁最强
+              - text: "\"没有竞品做。"
+            - paragraph [ref=e546]:
+              - strong [ref=e547]: 3. 隐私路由引擎
+              - text: 规则引擎已存在，扩展一层：敏感文件路径/PII 检测 → 自动路由到本地模型（Ollama），普通任务走云端。"
+              - strong [ref=e548]: 代码不出本机
+              - text: "\"可成为企业买单点。"
+            - paragraph [ref=e549]:
+              - strong [ref=e550]: 4. 预算守卫
+              - text: 预算树已在 subagent 里实现，上浮到用户层：会话/每日硬预算，超限自动降级到便宜模型或暂停审批。"花 5 块钱跑完这个任务"是确定性的。
+            - paragraph [ref=e551]:
+              - strong [ref=e552]: 5. 录制/回放调试器（Agent VCR）
+              - text: 事件溯源天然支持：录制一次会话 → mock provider 确定性重放 → 步进调试每次工具调用 → 回归测试 agent 行为。配合 evals 形成"agent 回归测试"闭环，开发者工具属性极强。
+            - paragraph [ref=e553]:
+              - strong [ref=e554]: 6. 双向协议：你的 agent 也是服务端
+              - text: PROTOCOL.md 已文档化，反向暴露：把任意会话挂成 MCP Server / A2A endpoint，让
+              - strong [ref=e555]: 别的 agent 调用你
+              - text: 。多数 harness 只做消费者。
+            - paragraph [ref=e556]:
+              - strong [ref=e557]: 7. Windows 优先体验
+              - text: 竞品几乎全是 mac-first。全局热键、托盘常驻、系统通知、
+              - code [ref=e558]: harness://
+              - text: 深链——在 Windows 群体里建立心智。
+            - paragraph [ref=e559]:
+              - strong [ref=e560]: 优先级建议
+              - text: ：1、2 复用度最高、别人最难抄（都建立在你的事件溯源+评测基座上），先做这两个。
+            - paragraph [ref=e561]: 需要的话我可以深入某一两个方案，给出具体的模块设计和实现拆解。
+          - generic [ref=e562]:
+            - button "复制内容" [ref=e563] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e567] [cursor=pointer]
+        - generic [ref=e572]:
+          - generic [ref=e573]: "请解释 src/harness/loop/react.py:104-125 的这段代码：用中文说明它在做什么、关键逻辑和潜在风险，不要修改文件。 ``` blocks.append( ImageBlock(media_type=im.get(\"media_type\", \"image/png\"), data=im.get(\"data\", \"\")) ) session.store.append( session.id, EventType.USER_MESSAGE, Message(role=\"user\", blocks=blocks).to_payload() ) usage_total = budget.usage # 共享累计器：子代理写入同一对象 turns = 0 last_input = 0 while True: turns += 1 if turns > budget.max_turns: final = f\"Stopped: max_turns ({budget.max_turns}) exceeded.\" session.record_assistant_text(final) _finish(session, final, turns, usage_total, model=getattr(self.provider, \"default_model\", \"\")) return final msgs = session.messages() if self.context_engine: last_input = last_input or self.context_engine.estimate(msgs) await self.context_engin ```"
+          - button "从此消息开启分支会话" [ref=e575] [cursor=pointer]
+        - 'generic "{\"path\":\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\\harness\\\\loop\\\\react.py\",\"offset\":60,\"limit\":110} 点击在工作台打开" [ref=e580] [cursor=pointer]':
+          - generic [ref=e585]: 读取
+          - generic [ref=e586]: D:\myWorkspace\AI_project\my-harness\src\harness\loop\react.py
+          - generic [ref=e587]: ✓
+        - generic [ref=e588]:
+          - paragraph [ref=e590]: 让我先读取实际文件，结合上下文来解释。
+          - generic [ref=e591]:
+            - button "复制内容" [ref=e592] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e596] [cursor=pointer]
+        - generic [ref=e601]:
+          - generic [ref=e602]:
+            - generic "src/harness/loop/react.py:114-236（已随消息发给模型），点击跳转" [ref=e604] [cursor=pointer]: react.py:114-236
+            - text: 这个是agentLoop吗，是怎么终止的
+          - button "从此消息开启分支会话" [ref=e606] [cursor=pointer]
+        - 'generic "{\"limit\":80,\"offset\":170,\"path\":\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\\harness\\\\loop\\\\react.py\"} 点击在工作台打开" [ref=e611] [cursor=pointer]':
+          - generic [ref=e616]: 读取
+          - generic [ref=e617]: D:\myWorkspace\AI_project\my-harness\src\harness\loop\react.py
+          - generic [ref=e618]: ✓
+        - generic [ref=e619]:
+          - paragraph [ref=e621]: 让我看一下循环的后半部分（工具执行完之后怎么走），才能完整回答终止逻辑。
+          - generic [ref=e622]:
+            - button "复制内容" [ref=e623] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e627] [cursor=pointer]
+        - generic [ref=e632]:
+          - generic [ref=e633]: 请通读 src/harness/loop/react.py 整个文件并做代码审阅：指出正确性、可读性、性能、安全方面的问题，按严重程度排序；不要修改文件，等我决定。
+          - button "从此消息开启分支会话" [ref=e635] [cursor=pointer]
+        - 'generic "{\"limit\":60,\"offset\":1,\"path\":\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\\harness\\\\loop\\\\react.py\"} 点击在工作台打开" [ref=e640] [cursor=pointer]':
+          - generic [ref=e645]: 读取
+          - generic [ref=e646]: D:\myWorkspace\AI_project\my-harness\src\harness\loop\react.py
+          - generic [ref=e647]: ✓
+        - 'generic "{\"command\":\"(Get-Content \\\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\\harness\\\\loop\\\\react.py\\\").Count\"}" [ref=e648]':
+          - generic [ref=e652]: 终端
+          - generic [ref=e653]: (Get-Content "D:\myWorkspace\AI_project\my-harness\src\harness\loop\react.py").Count
+          - generic [ref=e654]: ✓
+        - generic [ref=e655]:
+          - paragraph [ref=e657]: 我先把整个文件读完整（前面部分和结尾还没看全）。
+          - generic [ref=e658]:
+            - button "复制内容" [ref=e659] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e663] [cursor=pointer]
+        - 'generic "{\"limit\":30,\"offset\":225,\"path\":\"D:\\\\myWorkspace\\\\AI_project\\\\my-harness\\\\src\\\\harness\\\\loop\\\\react.py\"} 点击在工作台打开" [ref=e668] [cursor=pointer]':
+          - generic [ref=e673]: 读取
+          - generic [ref=e674]: D:\myWorkspace\AI_project\my-harness\src\harness\loop\react.py
+          - generic [ref=e675]: ✓
+        - generic [ref=e676]:
+          - paragraph [ref=e678]: 文件行数有点出入（read_file 显示到 244 行，PowerShell 统计是 230），我确认一下文件结尾：
+          - generic [ref=e679]:
+            - button "复制内容" [ref=e680] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e684] [cursor=pointer]
+        - 'generic "{\"pattern\":\"async def execute|except|is_error=True\",\"glob\":\"src/harness/tools/registry.py\"}" [ref=e689]':
+          - generic [ref=e694]: 搜索
+          - generic [ref=e695]: async def execute|except|is_error=True
+          - generic [ref=e696]: ✓
+        - 'generic "{\"pattern\":\"class Usage|def add|input_tokens|output_tokens\",\"glob\":\"src/harness/core/messages.py\"}" [ref=e697]':
+          - generic [ref=e702]: 搜索
+          - generic [ref=e703]: class Usage|def add|input_tokens|output_tokens
+          - generic [ref=e704]: ✓
+        - 'generic "{\"pattern\":\"text=|result.text|ChatResult|final_text\",\"glob\":\"src/harness/providers/*.py\"}" [ref=e705]':
+          - generic [ref=e710]: 搜索
+          - generic [ref=e711]: text=|result.text|ChatResult|final_text
+          - generic [ref=e712]: ✓
+        - generic [ref=e713]:
+          - paragraph [ref=e715]:
+            - text: 读完了整个文件（244 行）。为了让审阅结论准确而不是猜测，我先快速验证三个关键疑点：
+            - code [ref=e716]: registry.execute
+            - text: 是否内部兜底异常、
+            - code [ref=e717]: Usage.add
+            - text: 是否容忍 None、provider 是否保证
+            - code [ref=e718]: result.text
+            - text: 非 None。
+          - generic [ref=e719]:
+            - button "复制内容" [ref=e720] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e724] [cursor=pointer]
+        - 'generic "{\"pattern\":\"src/harness/tools/*.py\"}" [ref=e729]':
+          - generic [ref=e734]: 查找
+          - generic [ref=e735]: src/harness/tools/*.py
+          - generic [ref=e736]: ✓
+        - generic [ref=e737]:
+          - generic [ref=e738]:
+            - generic "src/harness/loop/react.py:82-237（已随消息发给模型），点击跳转" [ref=e740] [cursor=pointer]: react.py:82-237
+            - text: 这个loop终止的条件是什么
+          - button "从此消息开启分支会话" [ref=e742] [cursor=pointer]
+        - generic [ref=e747]:
+          - generic [ref=e748]:
+            - paragraph [ref=e749]:
+              - text: 这个 loop 只有
+              - strong [ref=e750]: 2 个正常终止出口
+              - text: ，外加异常路径：
+            - heading "1️⃣ 正常终止：模型不再调用工具（第 231-236 行）" [level=2] [ref=e751]
+            - code [ref=e753]: "if result.tool_uses: ... session.record_tool_results(results) continue # ← 有工具调用：回填结果，继续下一轮 final = result.text # ← 没有工具调用：这就是最终答案 _finish(session, final, turns, usage_total, ...) return final"
+            - paragraph [ref=e754]:
+              - text: 这是 ReAct 的标准结束方式——模型返回纯文本（
+              - code [ref=e755]: tool_uses
+              - text: 为空）时，视为任务完成，写
+              - code [ref=e756]: RUN_FINISHED
+              - text: 事件并返回答案。
+            - heading "2️⃣ 强制终止：超过 max_turns（第 114-120 行）" [level=2] [ref=e757]
+            - code [ref=e759]: "while True: turns += 1 if turns > budget.max_turns: # 默认 40（Budget.max_turns = 40） final = f\"Stopped: max_turns ({budget.max_turns}) exceeded.\" session.record_assistant_text(final) _finish(session, final, turns, usage_total, ...) return final"
+            - paragraph [ref=e760]:
+              - text: 防止模型无限循环调工具的保险丝。只要模型一直请求工具，就永远走
+              - code [ref=e761]: continue
+              - text: ，直到撞上限。
+            - heading "3️⃣ 异常路径（隐式终止）" [level=2] [ref=e762]
+            - list [ref=e763]:
+              - listitem [ref=e764]:
+                - code [ref=e765]: provider.chat
+                - text: 、
+                - code [ref=e766]: registry.execute
+                - text: 、hooks 等抛异常 → 直接向上传播，循环中断
+              - listitem [ref=e767]:
+                - text: ⚠️ 注意：异常路径
+                - strong [ref=e768]:
+                  - text: 不会执行
+                  - code [ref=e769]: _finish()
+                - text: ，事件流里会缺失
+                - code [ref=e770]: RUN_FINISHED
+                - text: 事件（没有 try/finally 包裹）
+            - heading "值得注意的点" [level=2] [ref=e771]
+            - list [ref=e772]:
+              - listitem [ref=e773]:
+                - strong [ref=e774]: token/费用不参与终止判断
+                - text: ：
+                - code [ref=e775]: usage_total
+                - text: 只是累计和上报（
+                - code [ref=e776]: on_usage
+                - text: 回调），
+                - code [ref=e777]: Budget
+                - text: 里没有 token 上限字段，超限拦截不在这个 loop 里
+              - listitem [ref=e778]:
+                - text: 两个正常出口都会调用
+                - code [ref=e779]: _finish()
+                - text: 写终止事件，保证事件流完整可回放
+            - paragraph [ref=e780]:
+              - text: 简单说：
+              - strong [ref=e781]: 模型自己收工 或 转数耗尽
+              - text: ，二选一。
+          - generic [ref=e782]:
+            - button "复制内容" [ref=e783] [cursor=pointer]
+            - button "从此消息开启分支会话" [ref=e787] [cursor=pointer]
+      - generic [ref=e792]:
+        - textbox "输入任务，Enter 发送；可直接 Ctrl+V 粘贴图片…" [ref=e793]
+        - generic [ref=e794]:
+          - button "＋" [ref=e795] [cursor=pointer]
+          - button "权限模式：完全访问 · 跳过所有确认，谨慎使用。" [ref=e797] [cursor=pointer]
+          - generic "思考档位" [ref=e800]:
+            - combobox [ref=e801] [cursor=pointer]:
+              - option "关"
+              - option "低"
+              - option "高" [selected]
+              - option "最高"
+          - combobox "切换模型（仅一个生效）" [ref=e802] [cursor=pointer]:
+            - option "glm-5.3-flash" [selected]
+            - option "glm-5.3"
+            - option "⚙ 管理模型…"
+          - button "↑" [disabled] [ref=e803]

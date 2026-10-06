@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -132,6 +133,9 @@ class ServerState:
         self.provider_factory = provider_factory or self._default_provider_factory
         self.registry = registry or build_default_registry()
         self.store = EventStore(cfg.data_dir)
+        # WS 客户端集合：事件广播给所有连接；client 指针=「主客户端」（权限审批等交互走最新连接）。
+        # 曾是单连接设计：第二个连接会抢走事件流、断开时置空导致先连的界面永久收不到事件（界面全死）。
+        self.clients: set[ClientConnection] = set()
         self.client: ClientConnection | None = None
         self.sessions: dict[str, tuple[Session, ReActLoop]] = {}
         self.running: dict[str, asyncio.Task] = {}
@@ -194,8 +198,8 @@ class ServerState:
         return ReActLoop
 
     def _notify(self, event: dict) -> None:
-        if self.client:
-            self.client.notify(event)
+        for c in list(self.clients):
+            c.notify(event)
 
     async def handle(self, msg: dict) -> None:
         try:
@@ -263,9 +267,9 @@ class ServerState:
         elif t == "GitUnstage":
             self._git_unstage(msg)
         elif t == "GitCommit":
-            self._git_commit(msg)
+            await self._git_commit(msg)
         elif t == "GitPush":
-            self._git_push()
+            await self._git_push()
         elif t == "GitGenMsg":
             await self._git_gen_msg(msg)
         elif t == "GitDiff":
@@ -544,12 +548,21 @@ class ServerState:
             vault=self.vault,
             skills=self.skills,
         )
+        def _ask_current(tool_desc: str, reason: str) -> "asyncio.Future | Any":
+            """审批请求动态路由到当前主客户端；无客户端时等效拒绝（与 asker=None 语义一致）。"""
+            c = self.client
+            if c is None:
+                fut: asyncio.Future = asyncio.get_running_loop().create_future()
+                fut.set_result("no")
+                return fut
+            return c.ask(tool_desc, reason)
+
         perms = PermissionEngine(
             mode=self.settings.get("permission_mode") or self.cfg.permissions_mode,
             allow=self.cfg.allow_rules,
             deny=self.cfg.deny_rules,
             ask=self.cfg.ask_rules,
-            asker=self.client.ask if self.client else None,
+            asker=_ask_current,  # 动态路由：会话创建时绑死的连接断开后，审批卡会发进黑洞
         )
         engine = ContextEngine(
             summarizer=self.provider_factory(),
@@ -961,10 +974,14 @@ class ServerState:
         if out is None:
             self._notify({"type": "GitStatus", "repo": False, "branch": "", "files": []})
             return
-        branch, files = "", []
+        branch, files, ahead = "", [], 0
         for line in out.splitlines():
             if line.startswith("## "):
-                branch = line[3:].split("...")[0].strip()
+                head = line[3:]
+                branch = head.split("...")[0].strip()
+                m = re.search(r"\[ahead (\d+)", head)  # 本地领先远程的未推送提交数
+                if m:
+                    ahead = int(m.group(1))
                 continue
             if len(line) >= 4:
                 # xy 保留原始两位码（X=暂存区状态 Y=工作区状态）：前端据 X/Y 拆「暂存/更改」两栏
@@ -975,7 +992,7 @@ class ServerState:
                         "xy": line[:2],
                     }
                 )
-        self._notify({"type": "GitStatus", "repo": True, "branch": branch, "files": files})
+        self._notify({"type": "GitStatus", "repo": True, "branch": branch, "ahead": ahead, "files": files})
 
     def _run_git2(self, *args: str, timeout: int = 30) -> tuple[int, str]:
         """需要结果码的 git 调用（stage/commit 等写操作）：返回 (returncode, 合并输出)。"""
@@ -1008,7 +1025,7 @@ class ServerState:
         self._notify({"type": "GitDone", "op": "unstage", "ok": rc == 0, "message": out})
         self._git_status()
 
-    def _git_commit(self, msg: dict) -> None:
+    async def _git_commit(self, msg: dict) -> None:
         message = (msg.get("message") or "").strip()
         if not message:
             self._notify({"type": "GitDone", "op": "commit", "ok": False, "message": "提交信息为空"})
@@ -1020,11 +1037,12 @@ class ServerState:
         self._notify({"type": "GitDone", "op": "commit", "ok": rc == 0, "message": out})
         self._git_status()
         if rc == 0 and msg.get("push"):  # 提交成功后连带推送（VSCode「提交并推送」）
-            self._git_push()
+            await self._git_push()
 
-    def _git_push(self) -> None:
-        """git push：网络操作放宽超时；无远程时报错信息原样回传到对话流。"""
-        rc, out = self._run_git2("push", timeout=120)
+    async def _git_push(self) -> None:
+        """git push：网络操作放宽超时，且必须放线程池跑——
+        同步 subprocess 阻塞在 asyncio 循环里会让整个 daemon 假死（所有 WS 命令全部无响应）。"""
+        rc, out = await asyncio.to_thread(self._run_git2, "push", timeout=120)
         self._notify({"type": "GitDone", "op": "push", "ok": rc == 0, "message": out or "已推送到远程"})
         self._git_status()
 
@@ -1559,7 +1577,8 @@ def create_app(
     async def ws_endpoint(websocket: WebSocket):
         await websocket.accept()
         client = ClientConnection(websocket.send_json, websocket.close)
-        state.client = client
+        state.clients.add(client)
+        state.client = client  # 最新连接成为主客户端（权限审批走它）
         pump = asyncio.create_task(client.pump())
         try:
             while True:
@@ -1579,9 +1598,14 @@ def create_app(
                 if not fut.done():
                     fut.set_result("no")
             pump.cancel()
-            for task in list(state.running.values()):
-                task.cancel()
-            state.client = None
-            state.running.clear()
+            state.clients.discard(client)
+            if state.client is client:
+                # 主连接走了：移交给剩余客户端，不能置 None（否则先连的界面从此收不到事件）
+                state.client = next(iter(state.clients), None)
+            if not state.clients:
+                # 最后一个客户端才停任务：早先「任何连接断开就取消所有运行」会误杀别的窗口正在跑的会话
+                for task in list(state.running.values()):
+                    task.cancel()
+                state.running.clear()
 
     return app

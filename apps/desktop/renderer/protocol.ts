@@ -123,6 +123,7 @@ export interface HistoryEntry {
 // —— 服务端 → 渲染进程 ——
 
 export type WsEvent =
+  | { type: "Pong" } // 心跳应答（渲染层 Ping → 服务端 Pong，看门狗用）
   | { type: "SessionCreated"; session_id: string; mode?: PermMode }
   | { type: "SessionResumed"; session_id: string }
   | { type: "SessionList"; sessions?: SessionInfo[]; groups?: string[] }
@@ -176,7 +177,7 @@ export type WsEvent =
       total: number;
       truncated: boolean;
     }
-  | { type: "GitStatus"; repo: boolean; branch: string; files: { path: string; code: string; xy?: string }[] }
+  | { type: "GitStatus"; repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy?: string }[] }
   | { type: "GitDiff"; path: string; diff: string }
   | { type: "GitDone"; op: "stage" | "unstage" | "commit" | "push"; ok: boolean; message: string }
   | { type: "GitCommitMsg"; ok: boolean; message?: string; error?: string }
@@ -196,6 +197,7 @@ export type WsEvent =
 // —— 渲染进程 → 服务端 ——
 
 export type WsCommand =
+  | { type: "Ping" } // 心跳（渲染层看门狗，服务端回 Pong）
   | { type: "CreateSession" }
   | { type: "ResumeSession"; session_id: string }
   | { type: "ListSessions" }

@@ -1,10 +1,10 @@
-582 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
-583 INFO: Python: 3.13.3
-658 INFO: Platform: Windows-11-10.0.22000-SP0
-659 INFO: Python environment: D:\myWorkspace\AI_project\my-harness\.venv
-11723 WARNING: Failed to collect submodules for 'litellm.proxy.ui_crud_endpoints' because importing 'litellm.proxy.ui_crud_endpoints' raised: ImportError: backoff is not installed. Please install it via 'pip install backoff'
-2295 WARNING: Failed to collect submodules for 'langchain.mcp' because importing 'langchain.mcp' raised: ModuleNotFoundError: No module named 'fastmcp'
-75529 INFO: Module search paths (PYTHONPATH):
+446 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+447 INFO: Python: 3.13.3
+547 INFO: Platform: Windows-11-10.0.22000-SP0
+547 INFO: Python environment: D:\myWorkspace\AI_project\my-harness\.venv
+9296 WARNING: Failed to collect submodules for 'litellm.proxy.ui_crud_endpoints' because importing 'litellm.proxy.ui_crud_endpoints' raised: ImportError: backoff is not installed. Please install it via 'pip install backoff'
+1999 WARNING: Failed to collect submodules for 'langchain.mcp' because importing 'langchain.mcp' raised: ModuleNotFoundError: No module named 'fastmcp'
+60511 INFO: Module search paths (PYTHONPATH):
 ['D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Scripts\\pyinstaller.exe',
  'C:\\Users\\Administrator\\AppData\\Roaming\\uv\\python\\cpython-3.13.3-windows-x86_64-none\\python313.zip',
  'C:\\Users\\Administrator\\AppData\\Roaming\\uv\\python\\cpython-3.13.3-windows-x86_64-none\\DLLs',
@@ -18,208 +18,208 @@
  'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\pythonwin',
  'D:\\myWorkspace\\AI_project\\my-harness\\packaging',
  'D:\\myWorkspace\\AI_project\\my-harness\\src']
-76460 INFO: Appending 'datas' from .spec
-77772 INFO: checking Analysis
-78054 INFO: Building because excludes changed
-78054 INFO: Looking for Python shared library...
-78054 INFO: Using Python shared library: C:\Users\Administrator\AppData\Roaming\uv\python\cpython-3.13.3-windows-x86_64-none\python313.dll
-78054 INFO: Running Analysis Analysis-00.toc
-78054 INFO: Target bytecode optimization level: 0
-78055 INFO: Initializing module dependency graph...
-78058 INFO: Initializing module graph hook caches...
-78096 INFO: Analyzing modules for base_library.zip ...
-81312 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-82807 INFO: Processing standard module hook 'hook-math.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-85666 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-87450 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-88512 INFO: Caching module dependency graph...
-88606 INFO: Analyzing D:\myWorkspace\AI_project\my-harness\packaging\server_entry.py
-88615 INFO: Processing standard module hook 'hook-uvicorn.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-90094 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-90453 INFO: Processing standard module hook 'hook-xml.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-90968 INFO: Processing standard module hook 'hook-_ctypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-92837 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-92839 INFO: SetuptoolsInfo: initializing cached setuptools info...
-95403 INFO: Processing standard module hook 'hook-platform.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-95958 INFO: Processing standard module hook 'hook-difflib.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-96219 INFO: Processing standard module hook 'hook-webbrowser.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-96766 INFO: Processing standard module hook 'hook-websockets.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-99931 INFO: Processing standard module hook 'hook-anyio.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-102143 INFO: Processing standard module hook 'hook-pydantic.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-103967 INFO: Processing standard module hook 'hook-rich.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-105886 INFO: Processing standard module hook 'hook-pygments.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-111085 INFO: Processing standard module hook 'hook-sysconfig.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-111960 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-114757 INFO: Processing standard module hook 'hook-opentelemetry.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-115763 INFO: Processing standard module hook 'hook-sqlite3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-117349 INFO: Processing standard module hook 'hook-certifi.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-131504 INFO: Processing standard module hook 'hook-botocore.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-142580 INFO: Processing standard module hook 'hook-dateutil.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-142809 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-143432 INFO: Processing standard module hook 'hook-urllib3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-143702 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-143703 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
-143716 INFO: Processing standard module hook 'hook-setuptools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-143741 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-143813 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-143814 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
-143895 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-143896 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
-144204 INFO: Processing standard module hook 'hook-_osx_support.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-144239 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-144895 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-144898 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-145925 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-145926 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
-147023 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-147024 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
-147657 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-147969 INFO: Processing standard module hook 'hook-cryptography.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-153483 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
-156821 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-162869 INFO: Processing standard module hook 'hook-langchain.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-165969 INFO: Processing standard module hook 'hook-orjson.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-167723 INFO: Processing standard module hook 'hook-jinja2.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-175597 INFO: Processing standard module hook 'hook-regex.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-176221 INFO: Processing standard module hook 'hook-PIL.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-176491 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-178594 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-182567 INFO: Processing standard module hook 'hook-pywintypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-183101 INFO: Processing standard module hook 'hook-jsonschema.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-183572 INFO: Processing standard module hook 'hook-jsonschema_specifications.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-202055 INFO: Processing standard module hook 'hook-boto3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-216036 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-216093 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-216151 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-260300 INFO: Processing standard module hook 'hook-ormsgpack.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\ormsgpack\\_pyinstaller'
-262945 INFO: Analyzing hidden import 'anyio._backends._asyncio'
-263230 INFO: Analyzing hidden import 'litellm.caching._internal_lru_cache'
-263235 INFO: Analyzing hidden import 'litellm.integrations.custom_sso_handler'
-263238 INFO: Analyzing hidden import 'litellm.integrations.generic_prompt_management'
-263266 INFO: Analyzing hidden import 'litellm.integrations.rubrik'
-263345 INFO: Analyzing hidden import 'litellm.integrations.test_httpx'
-263347 INFO: Analyzing hidden import 'litellm.llms.a2a.chat.guardrail_translation'
-263378 INFO: Analyzing hidden import 'litellm.llms.watsonx.completion.handler'
-263380 INFO: Analyzing hidden import 'litellm.models.base'
-263384 INFO: Analyzing hidden import 'litellm.proxy.a2a'
-263406 INFO: Analyzing hidden import 'litellm.proxy.a2a.endpoints'
-263413 INFO: Analyzing hidden import 'litellm.proxy.a2a.version_convert'
-263445 INFO: Analyzing hidden import 'litellm.proxy.client'
-263532 INFO: Analyzing hidden import 'litellm.proxy.collector'
-263551 INFO: Analyzing hidden import 'litellm.proxy.compliance_checks'
-263568 INFO: Analyzing hidden import 'litellm.proxy.custom_auth_auto'
-263570 INFO: Analyzing hidden import 'litellm.proxy.custom_prompt_management'
-263574 INFO: Analyzing hidden import 'litellm.proxy.custom_sso'
-263578 INFO: Analyzing hidden import 'litellm.proxy.custom_validate'
-263579 INFO: Analyzing hidden import 'litellm.proxy.lambda'
-263585 INFO: Analyzing hidden import 'litellm.proxy.mcp_tools'
-263587 INFO: Analyzing hidden import 'litellm.proxy.policy_engine.policy_endpoints'
-263634 INFO: Analyzing hidden import 'litellm.proxy.policy_engine.policy_resolve_endpoints'
-263663 INFO: Analyzing hidden import 'litellm.proxy.post_call_rules'
-263665 INFO: Analyzing hidden import 'litellm.proxy.prisma_migration'
-263669 INFO: Analyzing hidden import 'litellm.proxy.read_model_list'
-263672 INFO: Analyzing hidden import 'litellm.proxy.realtime_endpoints'
-263674 INFO: Analyzing hidden import 'litellm.proxy.realtime_endpoints.endpoints'
-263717 INFO: Analyzing hidden import 'litellm.proxy.vector_store_files_endpoints'
-263718 INFO: Analyzing hidden import 'litellm.proxy.vector_store_files_endpoints.endpoints'
-263767 INFO: Analyzing hidden import 'litellm.proxy_auth'
-263778 INFO: Analyzing hidden import 'litellm.rag.utils'
-263807 INFO: Analyzing hidden import 'litellm.rust_bridge.callbacks_legacy_python'
-263836 INFO: Analyzing hidden import 'litellm.rust_bridge.chat_completions.route_host'
-263848 INFO: Analyzing hidden import 'litellm.rust_bridge.lifecycle'
-263861 INFO: Analyzing hidden import 'litellm.rust_bridge.messages.route_host'
-263864 INFO: Analyzing hidden import 'litellm.rust_bridge.ocr.route_host'
-263870 INFO: Analyzing hidden import 'litellm.rust_bridge.responses.route_host'
-263872 INFO: Analyzing hidden import 'litellm.rust_bridge.settings'
-263878 INFO: Analyzing hidden import 'litellm.timeout'
-263887 INFO: Analyzing hidden import 'tiktoken._educational'
-263904 INFO: Analyzing hidden import 'tiktoken.load'
-263926 INFO: Analyzing hidden import 'tiktoken_ext.openai_public'
-263931 INFO: Analyzing hidden import 'mcp.cli'
-264894 INFO: Analyzing hidden import 'mcp.client.__main__'
-264901 INFO: Analyzing hidden import 'mcp.client.auth'
-264998 INFO: Analyzing hidden import 'mcp.client.auth.extensions'
-265000 INFO: Analyzing hidden import 'mcp.client.auth.extensions.client_credentials'
-265021 INFO: Analyzing hidden import 'mcp.client.auth.extensions.identity_assertion'
-265035 INFO: Analyzing hidden import 'mcp.server.__main__'
-265039 INFO: Analyzing hidden import 'mcp.server.apps'
-265053 INFO: Analyzing hidden import 'mcp.server.fastmcp'
-265055 INFO: Analyzing hidden import 'mcp.shared.metadata_utils'
-265061 INFO: Analyzing hidden import 'uvicorn.__main__'
-265062 INFO: Analyzing hidden import 'uvicorn.lifespan'
-265064 INFO: Analyzing hidden import 'uvicorn.lifespan.off'
-265067 INFO: Analyzing hidden import 'uvicorn.lifespan.on'
-265081 INFO: Analyzing hidden import 'uvicorn.loops'
-265083 INFO: Analyzing hidden import 'uvicorn.loops.asyncio'
-265086 INFO: Analyzing hidden import 'uvicorn.loops.auto'
-265090 INFO: Analyzing hidden import 'uvicorn.loops.zuvloop'
-265095 INFO: Analyzing hidden import 'uvicorn.protocols.http.auto'
-265097 INFO: Analyzing hidden import 'uvicorn.protocols.websockets.auto'
-265099 INFO: Analyzing hidden import 'uvicorn.workers'
-265108 INFO: Analyzing hidden import 'langchain.agents'
-266021 INFO: Analyzing hidden import 'langchain.messages'
-266032 INFO: Analyzing hidden import 'langchain.rate_limiters'
-266033 INFO: Analyzing hidden import 'langchain_core._security._ssrf_protection'
-266043 INFO: Analyzing hidden import 'langchain_core.chat_loaders'
-266049 INFO: Analyzing hidden import 'langchain_core.cross_encoders'
-266051 INFO: Analyzing hidden import 'langchain_core.document_loaders'
-266073 INFO: Analyzing hidden import 'langchain_core.indexing'
-266144 INFO: Analyzing hidden import 'langchain_core.indexing.in_memory'
-266153 INFO: Analyzing hidden import 'langchain_core.output_parsers.openai_functions'
-266170 INFO: Analyzing hidden import 'langchain_core.stores'
-266184 INFO: Analyzing hidden import 'langchain_core.structured_query'
-266195 INFO: Analyzing hidden import 'langchain_core.sys_info'
-266204 INFO: Analyzing hidden import 'langchain_core.utils.html'
-266212 INFO: Analyzing hidden import 'langchain_openai.chat_models.codex'
-266303 INFO: Analyzing hidden import 'langchain_openai.middleware'
-266338 INFO: Analyzing hidden import 'langchain_openai.output_parsers'
-266339 INFO: Analyzing hidden import 'langchain_openai.output_parsers.tools'
-266343 INFO: Analyzing hidden import 'langgraph.func'
-266365 INFO: Analyzing hidden import 'langgraph.graph.ui'
-266374 INFO: Analyzing hidden import 'langgraph.prebuilt.interrupt'
-266379 INFO: Analyzing hidden import 'langgraph.pregel._config'
-266380 INFO: Analyzing hidden import 'langgraph.pregel._remote_run_stream'
-266403 INFO: Analyzing hidden import 'langgraph.pregel.remote'
-266470 INFO: Analyzing hidden import 'langgraph.pregel.types'
-266472 INFO: Analyzing hidden import 'langgraph.utils'
-266474 INFO: Analyzing hidden import 'langgraph.utils.config'
-266478 INFO: Analyzing hidden import 'langgraph.utils.runnable'
-266480 INFO: Analyzing hidden import 'langgraph.version'
-266482 INFO: Processing module hooks (post-graph stage)...
-267703 WARNING: Hidden import "tzdata" not found!
-268361 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-274171 INFO: Performing binary vs. data reclassification (6020 entries)
-276391 INFO: Looking for ctypes DLLs
-276741 INFO: Analyzing run-time hooks ...
-276793 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-276798 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-276805 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-276810 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-276813 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-276816 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-277269 INFO: Creating base_library.zip...
-277322 INFO: Looking for dynamic libraries
-297265 INFO: Extra DLL search directories (AddDllDirectory): []
-297265 INFO: Extra DLL search directories (PATH): []
-300894 INFO: Warnings written to D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\warn-harness-server.txt
-302052 INFO: Graph cross-reference written to D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\xref-harness-server.html
-302725 INFO: checking PYZ
-302952 INFO: Building because D:\myWorkspace\AI_project\my-harness\src\harness\server\app.py changed
-302952 INFO: Building PYZ (ZlibArchive) D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\PYZ-00.pyz
-308493 INFO: Building PYZ (ZlibArchive) D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\PYZ-00.pyz completed successfully.
-308955 INFO: checking PKG
-309058 INFO: Building because toc changed
-309058 INFO: Building PKG (CArchive) harness-server.pkg
-339611 INFO: Building PKG (CArchive) harness-server.pkg completed successfully.
-339850 INFO: Bootloader D:\myWorkspace\AI_project\my-harness\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
-339850 INFO: checking EXE
-339958 INFO: Building because toc changed
-339958 INFO: Building EXE from EXE-00.toc
-339976 INFO: Copying bootloader EXE to D:\myWorkspace\AI_project\my-harness\packaging\dist\harness-server.exe
-339986 INFO: Copying icon to EXE
-339992 INFO: Copying 0 resources to EXE
-339992 INFO: Embedding manifest in EXE
-339997 INFO: Appending PKG archive to EXE
-340104 INFO: Fixing EXE headers
-340702 INFO: Building EXE from EXE-00.toc completed successfully.
-340952 INFO: Build complete! The results are available in: D:\myWorkspace\AI_project\my-harness\packaging\dist
+61401 INFO: Appending 'datas' from .spec
+62513 INFO: checking Analysis
+62749 INFO: Building because excludes changed
+62749 INFO: Looking for Python shared library...
+62749 INFO: Using Python shared library: C:\Users\Administrator\AppData\Roaming\uv\python\cpython-3.13.3-windows-x86_64-none\python313.dll
+62750 INFO: Running Analysis Analysis-00.toc
+62750 INFO: Target bytecode optimization level: 0
+62750 INFO: Initializing module dependency graph...
+62753 INFO: Initializing module graph hook caches...
+62787 INFO: Analyzing modules for base_library.zip ...
+65077 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+66506 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+66801 INFO: Processing standard module hook 'hook-math.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+69135 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+71753 INFO: Caching module dependency graph...
+71829 INFO: Analyzing D:\myWorkspace\AI_project\my-harness\packaging\server_entry.py
+71835 INFO: Processing standard module hook 'hook-uvicorn.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+73061 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+73370 INFO: Processing standard module hook 'hook-xml.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+73813 INFO: Processing standard module hook 'hook-_ctypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+75398 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+75400 INFO: SetuptoolsInfo: initializing cached setuptools info...
+77522 INFO: Processing standard module hook 'hook-platform.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+77992 INFO: Processing standard module hook 'hook-difflib.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+78209 INFO: Processing standard module hook 'hook-webbrowser.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+78667 INFO: Processing standard module hook 'hook-websockets.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+81430 INFO: Processing standard module hook 'hook-anyio.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+83277 INFO: Processing standard module hook 'hook-pydantic.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+84682 INFO: Processing standard module hook 'hook-rich.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+86264 INFO: Processing standard module hook 'hook-pygments.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+90758 INFO: Processing standard module hook 'hook-sysconfig.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+91489 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+93866 INFO: Processing standard module hook 'hook-opentelemetry.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+94743 INFO: Processing standard module hook 'hook-sqlite3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+96043 INFO: Processing standard module hook 'hook-certifi.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+104944 INFO: Processing standard module hook 'hook-botocore.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+111703 INFO: Processing standard module hook 'hook-dateutil.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+111877 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112374 INFO: Processing standard module hook 'hook-urllib3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+112617 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112618 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+112630 INFO: Processing standard module hook 'hook-setuptools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+112660 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112725 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112725 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+112794 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112795 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+113060 INFO: Processing standard module hook 'hook-_osx_support.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+113087 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+113652 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+113655 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+114497 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+114498 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+115410 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+115411 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+115958 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+116222 INFO: Processing standard module hook 'hook-cryptography.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+119997 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+122719 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+127479 INFO: Processing standard module hook 'hook-langchain.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+129439 INFO: Processing standard module hook 'hook-orjson.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+130896 INFO: Processing standard module hook 'hook-jinja2.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+137075 INFO: Processing standard module hook 'hook-regex.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+137557 INFO: Processing standard module hook 'hook-PIL.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+137758 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+138876 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+141966 INFO: Processing standard module hook 'hook-pywintypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+142341 INFO: Processing standard module hook 'hook-jsonschema.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+142683 INFO: Processing standard module hook 'hook-jsonschema_specifications.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+156398 INFO: Processing standard module hook 'hook-boto3.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+164324 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+164379 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+164426 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+198692 INFO: Processing standard module hook 'hook-ormsgpack.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\ormsgpack\\_pyinstaller'
+200843 INFO: Analyzing hidden import 'anyio._backends._asyncio'
+201092 INFO: Analyzing hidden import 'litellm.caching._internal_lru_cache'
+201096 INFO: Analyzing hidden import 'litellm.integrations.custom_sso_handler'
+201100 INFO: Analyzing hidden import 'litellm.integrations.generic_prompt_management'
+201124 INFO: Analyzing hidden import 'litellm.integrations.rubrik'
+201191 INFO: Analyzing hidden import 'litellm.integrations.test_httpx'
+201192 INFO: Analyzing hidden import 'litellm.llms.a2a.chat.guardrail_translation'
+201218 INFO: Analyzing hidden import 'litellm.llms.watsonx.completion.handler'
+201220 INFO: Analyzing hidden import 'litellm.models.base'
+201224 INFO: Analyzing hidden import 'litellm.proxy.a2a'
+201244 INFO: Analyzing hidden import 'litellm.proxy.a2a.endpoints'
+201251 INFO: Analyzing hidden import 'litellm.proxy.a2a.version_convert'
+201278 INFO: Analyzing hidden import 'litellm.proxy.client'
+201362 INFO: Analyzing hidden import 'litellm.proxy.collector'
+201381 INFO: Analyzing hidden import 'litellm.proxy.compliance_checks'
+201397 INFO: Analyzing hidden import 'litellm.proxy.custom_auth_auto'
+201400 INFO: Analyzing hidden import 'litellm.proxy.custom_prompt_management'
+201403 INFO: Analyzing hidden import 'litellm.proxy.custom_sso'
+201406 INFO: Analyzing hidden import 'litellm.proxy.custom_validate'
+201407 INFO: Analyzing hidden import 'litellm.proxy.lambda'
+201412 INFO: Analyzing hidden import 'litellm.proxy.mcp_tools'
+201413 INFO: Analyzing hidden import 'litellm.proxy.policy_engine.policy_endpoints'
+201454 INFO: Analyzing hidden import 'litellm.proxy.policy_engine.policy_resolve_endpoints'
+201479 INFO: Analyzing hidden import 'litellm.proxy.post_call_rules'
+201480 INFO: Analyzing hidden import 'litellm.proxy.prisma_migration'
+201484 INFO: Analyzing hidden import 'litellm.proxy.read_model_list'
+201486 INFO: Analyzing hidden import 'litellm.proxy.realtime_endpoints'
+201487 INFO: Analyzing hidden import 'litellm.proxy.realtime_endpoints.endpoints'
+201523 INFO: Analyzing hidden import 'litellm.proxy.vector_store_files_endpoints'
+201524 INFO: Analyzing hidden import 'litellm.proxy.vector_store_files_endpoints.endpoints'
+201569 INFO: Analyzing hidden import 'litellm.proxy_auth'
+201579 INFO: Analyzing hidden import 'litellm.rag.utils'
+201603 INFO: Analyzing hidden import 'litellm.rust_bridge.callbacks_legacy_python'
+201629 INFO: Analyzing hidden import 'litellm.rust_bridge.chat_completions.route_host'
+201639 INFO: Analyzing hidden import 'litellm.rust_bridge.lifecycle'
+201650 INFO: Analyzing hidden import 'litellm.rust_bridge.messages.route_host'
+201653 INFO: Analyzing hidden import 'litellm.rust_bridge.ocr.route_host'
+201658 INFO: Analyzing hidden import 'litellm.rust_bridge.responses.route_host'
+201663 INFO: Analyzing hidden import 'litellm.rust_bridge.settings'
+201668 INFO: Analyzing hidden import 'litellm.timeout'
+201676 INFO: Analyzing hidden import 'tiktoken._educational'
+201691 INFO: Analyzing hidden import 'tiktoken.load'
+201707 INFO: Analyzing hidden import 'tiktoken_ext.openai_public'
+201713 INFO: Analyzing hidden import 'mcp.cli'
+202571 INFO: Analyzing hidden import 'mcp.client.__main__'
+202579 INFO: Analyzing hidden import 'mcp.client.auth'
+202659 INFO: Analyzing hidden import 'mcp.client.auth.extensions'
+202660 INFO: Analyzing hidden import 'mcp.client.auth.extensions.client_credentials'
+202676 INFO: Analyzing hidden import 'mcp.client.auth.extensions.identity_assertion'
+202690 INFO: Analyzing hidden import 'mcp.server.__main__'
+202693 INFO: Analyzing hidden import 'mcp.server.apps'
+202704 INFO: Analyzing hidden import 'mcp.server.fastmcp'
+202705 INFO: Analyzing hidden import 'mcp.shared.metadata_utils'
+202708 INFO: Analyzing hidden import 'uvicorn.__main__'
+202709 INFO: Analyzing hidden import 'uvicorn.lifespan'
+202710 INFO: Analyzing hidden import 'uvicorn.lifespan.off'
+202713 INFO: Analyzing hidden import 'uvicorn.lifespan.on'
+202722 INFO: Analyzing hidden import 'uvicorn.loops'
+202723 INFO: Analyzing hidden import 'uvicorn.loops.asyncio'
+202725 INFO: Analyzing hidden import 'uvicorn.loops.auto'
+202730 INFO: Analyzing hidden import 'uvicorn.loops.zuvloop'
+202734 INFO: Analyzing hidden import 'uvicorn.protocols.http.auto'
+202735 INFO: Analyzing hidden import 'uvicorn.protocols.websockets.auto'
+202738 INFO: Analyzing hidden import 'uvicorn.workers'
+202744 INFO: Analyzing hidden import 'langchain.agents'
+203521 INFO: Analyzing hidden import 'langchain.messages'
+203531 INFO: Analyzing hidden import 'langchain.rate_limiters'
+203533 INFO: Analyzing hidden import 'langchain_core._security._ssrf_protection'
+203542 INFO: Analyzing hidden import 'langchain_core.chat_loaders'
+203547 INFO: Analyzing hidden import 'langchain_core.cross_encoders'
+203549 INFO: Analyzing hidden import 'langchain_core.document_loaders'
+203569 INFO: Analyzing hidden import 'langchain_core.indexing'
+203631 INFO: Analyzing hidden import 'langchain_core.indexing.in_memory'
+203642 INFO: Analyzing hidden import 'langchain_core.output_parsers.openai_functions'
+203659 INFO: Analyzing hidden import 'langchain_core.stores'
+203675 INFO: Analyzing hidden import 'langchain_core.structured_query'
+203685 INFO: Analyzing hidden import 'langchain_core.sys_info'
+203694 INFO: Analyzing hidden import 'langchain_core.utils.html'
+203702 INFO: Analyzing hidden import 'langchain_openai.chat_models.codex'
+203781 INFO: Analyzing hidden import 'langchain_openai.middleware'
+203814 INFO: Analyzing hidden import 'langchain_openai.output_parsers'
+203816 INFO: Analyzing hidden import 'langchain_openai.output_parsers.tools'
+203818 INFO: Analyzing hidden import 'langgraph.func'
+203840 INFO: Analyzing hidden import 'langgraph.graph.ui'
+203848 INFO: Analyzing hidden import 'langgraph.prebuilt.interrupt'
+203852 INFO: Analyzing hidden import 'langgraph.pregel._config'
+203853 INFO: Analyzing hidden import 'langgraph.pregel._remote_run_stream'
+203874 INFO: Analyzing hidden import 'langgraph.pregel.remote'
+203931 INFO: Analyzing hidden import 'langgraph.pregel.types'
+203934 INFO: Analyzing hidden import 'langgraph.utils'
+203936 INFO: Analyzing hidden import 'langgraph.utils.config'
+203938 INFO: Analyzing hidden import 'langgraph.utils.runnable'
+203939 INFO: Analyzing hidden import 'langgraph.version'
+203940 INFO: Processing module hooks (post-graph stage)...
+204933 WARNING: Hidden import "tzdata" not found!
+205492 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+210362 INFO: Performing binary vs. data reclassification (6020 entries)
+212300 INFO: Looking for ctypes DLLs
+212616 INFO: Analyzing run-time hooks ...
+212660 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+212665 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+212672 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+212677 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+212680 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+212682 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'D:\\myWorkspace\\AI_project\\my-harness\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+213056 INFO: Creating base_library.zip...
+213103 INFO: Looking for dynamic libraries
+230530 INFO: Extra DLL search directories (AddDllDirectory): []
+230530 INFO: Extra DLL search directories (PATH): []
+233509 INFO: Warnings written to D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\warn-harness-server.txt
+234493 INFO: Graph cross-reference written to D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\xref-harness-server.html
+235083 INFO: checking PYZ
+235270 INFO: Building because D:\myWorkspace\AI_project\my-harness\src\harness\__init__.py changed
+235271 INFO: Building PYZ (ZlibArchive) D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\PYZ-00.pyz
+240170 INFO: Building PYZ (ZlibArchive) D:\myWorkspace\AI_project\my-harness\packaging\build\harness-server\PYZ-00.pyz completed successfully.
+240547 INFO: checking PKG
+240632 INFO: Building because toc changed
+240632 INFO: Building PKG (CArchive) harness-server.pkg
+267678 INFO: Building PKG (CArchive) harness-server.pkg completed successfully.
+267884 INFO: Bootloader D:\myWorkspace\AI_project\my-harness\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+267884 INFO: checking EXE
+267978 INFO: Building because toc changed
+267978 INFO: Building EXE from EXE-00.toc
+267994 INFO: Copying bootloader EXE to D:\myWorkspace\AI_project\my-harness\packaging\dist\harness-server.exe
+268003 INFO: Copying icon to EXE
+268008 INFO: Copying 0 resources to EXE
+268008 INFO: Embedding manifest in EXE
+268013 INFO: Appending PKG archive to EXE
+268115 INFO: Fixing EXE headers
+268752 INFO: Building EXE from EXE-00.toc completed successfully.
+268958 INFO: Build complete! The results are available in: D:\myWorkspace\AI_project\my-harness\packaging\dist

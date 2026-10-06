@@ -1,6 +1,6 @@
 {
   "name": "my-harness-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "productName": "Y Harness",
   "private": true,
   "description": "Y Harness desktop client (Electron + React, speaks the my-harness WS protocol)",

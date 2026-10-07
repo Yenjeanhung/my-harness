@@ -698,6 +698,60 @@ export function FileTree(props: {
       ) : null}
       {ctx && (
         <div className="ctx-menu" ref={ctxRef} style={{ left: ctx.x, top: ctx.y }}>
+          {ctx.kind === "dir" && (
+            <>
+              <div
+                className="ai-item"
+                onClick={() => {
+                  setNewEntry({ parent: ctx.path, kind: "file" });
+                  setNewName("");
+                  setCtx(null);
+                }}
+              >
+                <Icon name="filePlus" size={13} /> 新建文件
+              </div>
+              <div
+                className="ai-item"
+                onClick={() => {
+                  setNewEntry({ parent: ctx.path, kind: "dir" });
+                  setNewName("");
+                  setCtx(null);
+                }}
+              >
+                <Icon name="folderPlus" size={13} /> 新建文件夹
+              </div>
+            </>
+          )}
+          <div
+            className="ai-item"
+            onClick={() => {
+              // 需要该行可见才能内联改名：展开祖先目录后置 renaming（树上行渲染时生效）
+              setRenaming(ctx.path);
+              setRenameVal(ctx.path.split("/").pop() || ctx.path);
+              setCtx(null);
+            }}
+          >
+            <Icon name="edit" size={13} /> 重命名
+          </div>
+          <div
+            className="ai-item"
+            onClick={() => {
+              setConfirmDel(ctx.path);
+              setCtx(null);
+            }}
+          >
+            <Icon name="x" size={13} /> 删除（进回收站）
+          </div>
+          <div
+            className="ai-item"
+            onClick={() => {
+              navigator.clipboard?.writeText(ctx.path).catch(() => {});
+              setCtx(null);
+            }}
+          >
+            <Icon name="file" size={13} /> 复制相对路径
+          </div>
+          <div className="msep" />
           <div
             className="ai-item"
             onClick={() => {
@@ -1189,10 +1243,11 @@ export function EditorPane(props: {
       { label: "快速查看", run: act("editor.action.peekDefinition") },
       "sep",
       { label: "重命名符号", key: "F2", disabled: pyNoLsp, run: act("editor.action.rename") },
-      { label: "更改所有匹配项", key: "Ctrl+F2", disabled: !hasSel, run: act("editor.action.changeAllSelection") },
+      { label: "更改所有匹配项", key: "Ctrl+F2", disabled: !hasSel, run: act("editor.action.changeAll") },
       { label: "添加行注释", key: "Ctrl+/", run: act("editor.action.commentLine") },
       { label: "格式化文档", disabled: pyNoLsp, run: act("editor.action.formatDocument") },
-      { label: "整理 Import", disabled: pyNoLsp, run: act("editor.action.organizeImports") },
+      // monaco 的 organizeImports 只挂在 TS/JS 语言服务上，python 没有对应能力 → 置灰
+      { label: "整理 Import", disabled: pyNoLsp || langIsPy(activePath), run: act("editor.action.organizeImports") },
       "sep",
       { label: "剪切", key: "Ctrl+X", disabled: !hasSel, run: act("editor.action.clipboardCutAction") },
       { label: "复制", key: "Ctrl+C", disabled: !hasSel, run: act("editor.action.clipboardCopyAction") },

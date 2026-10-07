@@ -292,6 +292,7 @@
         box-shadow: 0 8px 28px rgba(0,0,0,.55);
       }
       .ctx-menu .ai-item svg { color: #79c0ff; }
+      .ctx-menu .msep { height: 1px; background: #30363d; margin: 5px 6px; }
       .ai-item .ft-icon, .ai-item svg { color: #d2a8ff; flex: none; }
       /* monaco 编辑器右键菜单（0.57 新菜单实现）：主题未定义 menu.* 变量时底色透明，
          菜单底下会透出编辑器文字——CSS 兜底与 yharness-dark 主题里的 menu.* 同值 */
@@ -836,8 +837,11 @@
         font-size: 14px; resize: none; line-height: 1.5; padding: 2px; display: block;
       }
       /* 输入框引用卡片镜像层：垫在 textarea 底下，文本透明只留卡片底色（CodeBuddy 式引用卡）。
-         与 textarea 同字体/行高/内边距；宽度由 JS 同步为 textarea clientWidth（滚动条出现时换行仍一致） */
+         与 textarea 同字体/行高/内边距；宽度由 JS 同步为 textarea clientWidth（滚动条出现时换行仍一致）。
+         textarea 必须 relative+z-index:1 压在镜像上：定位元素默认画在普通流内容之上，
+         否则卡片底色会盖住输入的文字 */
       .input-stack { position: relative; display: block; }
+      .input-stack textarea { position: relative; z-index: 1; }
       .input-mirror {
         position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: hidden;
         font-size: 14px; line-height: 1.5; padding: 2px; color: transparent;

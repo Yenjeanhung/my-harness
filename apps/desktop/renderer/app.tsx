@@ -414,6 +414,10 @@ function App() {
   const [searchQ, setSearchQ] = useState("");
   // 「搜索会话」按钮：打开侧栏会话 tab 并把焦点交给搜索框（自增 tick 驱动 focus）
   const [sessSearchFocus, setSessSearchFocus] = useState(0);
+  // 代码模式专属的「历史对话」面板（CodeBuddy 式，覆盖对话区；会话模式的会话管理走左侧栏，两处不共用）
+  const [histOpen, setHistOpen] = useState(false);
+  const [histQ, setHistQ] = useState("");
+  const [histSearchFocus, setHistSearchFocus] = useState(0);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // 待确认删除的 session_id
   const [settings, setSettings] = useState<SettingsState>({
@@ -1276,6 +1280,11 @@ function App() {
     if (!sessSearchFocus) return;
     setTimeout(() => document.getElementById("sess-search")?.focus(), 60);
   }, [sessSearchFocus]);
+  // 代码模式历史面板打开后聚焦其搜索框
+  useEffect(() => {
+    if (!histSearchFocus || !histOpen) return;
+    setTimeout(() => document.getElementById("hist-search")?.focus(), 60);
+  }, [histSearchFocus, histOpen]);
 
   // 输入框引用 token → 镜像层卡片（发送时 composeMessage 原样展开，正则保持一致）
   const INPUT_REF_TOKEN = /@([^\s@:，。；、]+?):(\d+)-(\d+)/g;
@@ -2672,7 +2681,7 @@ function App() {
           <span className={"dot " + dot} />
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
           {/* 上下文圆环/连接信息已并入输入框上方用量条（两种模式统一），头部只留标题 */}
-          {/* 头部按钮是代码模式专属（新建/历史/搜索三键）；对话模式管理入口都在左侧会话栏，头部保持干净 */}
+          {/* 头部按钮是代码模式专属：历史/搜索打开覆盖在对话区上的「历史对话」面板（CodeBuddy 式），不动左侧文件栏 */}
           {fileMode && (
             <>
               <button className="head-ic" title="新建会话" onClick={newSession}>
@@ -2680,11 +2689,10 @@ function App() {
               </button>
               <button
                 className="head-ic"
-                title="会话历史（打开会话列表）"
+                title="会话历史"
                 onClick={() => {
-                  setSideTab("sessions");
-                  setShowProjects(false);
-                  setSidebarOpen(true);
+                  setHistOpen(true);
+                  setHistSearchFocus((n) => n + 1);
                 }}
               >
                 <Icon name="history" size={14} />
@@ -2693,10 +2701,8 @@ function App() {
                 className="head-ic"
                 title="搜索会话（标题与内容）"
                 onClick={() => {
-                  setSideTab("sessions");
-                  setShowProjects(false);
-                  setSidebarOpen(true);
-                  setSessSearchFocus((n) => n + 1);
+                  setHistOpen(true);
+                  setHistSearchFocus((n) => n + 1);
                 }}
               >
                 <Icon name="search" size={14} />
@@ -2704,6 +2710,59 @@ function App() {
             </>
           )}
         </header>
+        {/* 代码模式历史对话面板：覆盖对话区（头部以下），返回按钮关闭；会话模式的会话管理在左侧栏，两处互不相干 */}
+        {histOpen && (
+          <div className="hist-panel">
+            <div className="hist-top">
+              <button className="hist-back" onClick={() => setHistOpen(false)}>‹ 返回</button>
+              <span className="hist-title">历史对话</span>
+            </div>
+            <div className="hist-search">
+              <input
+                id="hist-search"
+                placeholder="搜索历史对话…"
+                value={histQ}
+                onChange={(e) => setHistQ(e.target.value)}
+              />
+            </div>
+            <div className="hist-list">
+              {(() => {
+                const q = histQ.trim().toLowerCase();
+                const filtered = q
+                  ? (sessions || []).filter((s) => (s.title || "").toLowerCase().includes(q) || s.session_id.includes(q))
+                  : sessions || [];
+                if (q && !filtered.length) return <div className="hist-empty">无匹配会话</div>;
+                return groupSessions(filtered).map((g) => (
+                  <div key={g.key}>
+                    <div className="hist-ghead">
+                      <span>{g.label}</span>
+                      <span>{g.items.length}</span>
+                    </div>
+                    {g.items.map((s) => (
+                      <div
+                        key={s.session_id}
+                        className={"sess" + (s.session_id === sessionId ? " active" : "")}
+                        title={s.title || s.session_id}
+                        onClick={() => {
+                          resume(s.session_id);
+                          setHistOpen(false);
+                        }}
+                      >
+                        <div className="sinfo">
+                          <div className="stitle">
+                            {s.title || s.session_id.slice(0, 10)}
+                            {s.session_id === sessionId && <span className="hist-cur">当前对话</span>}
+                          </div>
+                          <div className="smeta">{fmtRowTime(s.last_active)} · {s.events} ev</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
         {/* 详情卡从用量条向上弹（触发点在输入框上方，两种模式统一） */}
         {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
           <div className="ctx-pop up" ref={ctxPopRef}>

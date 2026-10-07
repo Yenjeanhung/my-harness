@@ -803,6 +803,44 @@
         border-radius: 999px; color: #8b949e;
       }
       .usage-strip .ctx-mini:hover, .usage-strip .ctx-mini.on { background: #1c2230; color: #c9d1d9; }
+      /* —— 代码模式「历史对话」面板（CodeBuddy 式）：覆盖对话区，返回按钮关闭；
+          与会话模式的左侧会话栏完全独立 —— */
+      .hist-panel {
+        position: absolute; top: 44px; left: 0; right: 0; bottom: 0; z-index: 58;
+        display: flex; flex-direction: column; background: #111318;
+      }
+      .hist-panel .hist-top {
+        display: flex; align-items: center; gap: 12px; flex: none;
+        padding: 8px 14px; border-bottom: 1px solid #262a33;
+      }
+      .hist-panel .hist-back {
+        background: transparent; border: 1px solid #30363d; border-radius: 7px;
+        color: #9da7b3; font-size: 12.5px; padding: 3px 10px; cursor: pointer;
+      }
+      .hist-panel .hist-back:hover { color: #e6edf3; border-color: #484f58; }
+      .hist-panel .hist-title { font-weight: 600; font-size: 13.5px; color: #e6edf3; }
+      .hist-panel .hist-search { padding: 10px 14px 6px; flex: none; }
+      .hist-panel .hist-search input {
+        width: 100%; background: #161921; border: 1px solid #30363d; border-radius: 8px;
+        color: #d7dae0; padding: 7px 10px; font-size: 12.5px; outline: none;
+      }
+      .hist-panel .hist-search input:focus { border-color: #38414d; }
+      .hist-panel .hist-list { flex: 1; overflow-y: auto; padding: 4px 8px 14px; }
+      .hist-panel .hist-ghead {
+        display: flex; justify-content: space-between; color: #7d8590; font-size: 11.5px;
+        padding: 8px 8px 4px;
+      }
+      .hist-panel .sess { padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+      .hist-panel .sess:hover { background: #1c2230; }
+      .hist-panel .sess.active { background: #16233a; }
+      .hist-panel .sess .stitle { color: #c9d1d9; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .hist-panel .sess.active .stitle { color: #79c0ff; }
+      .hist-panel .sess .smeta { color: #6e7681; font-size: 11px; margin-top: 2px; font-family: Consolas, monospace; }
+      .hist-panel .hist-cur {
+        display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 5px;
+        border: 1px solid rgba(63, 185, 80, 0.5); color: #3fb950; font-size: 10.5px;
+      }
+      .hist-panel .hist-empty { padding: 14px; color: #6e7681; font-size: 12px; }
       .ctx-pop {
         position: absolute; top: 44px; right: 14px; z-index: 55; width: 320px;
         background: #161921; border: 1px solid #30363d; border-radius: 12px;

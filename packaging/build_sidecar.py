@@ -12,7 +12,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STAMP = Path(__file__).resolve().parent / ".build_hash"
-EXE_CANDIDATES = [ROOT / "dist" / "harness-server.exe", ROOT / "packaging" / "dist" / "harness-server.exe"]
+# onedir 产物：dist/harness-server/ 目录，入口 exe 在目录顶层（依赖在 _internal/）
+EXE_CANDIDATES = [
+    ROOT / "dist" / "harness-server" / "harness-server.exe",
+    ROOT / "packaging" / "dist" / "harness-server" / "harness-server.exe",
+]
+# 历史 onefile 产物：重建成功后清掉，免得旧单文件继续被误用/占 100MB+
+STALE_ONEFILE = [ROOT / "dist" / "harness-server.exe", ROOT / "packaging" / "dist" / "harness-server.exe"]
 
 
 def fingerprint() -> str:
@@ -56,6 +62,10 @@ def main() -> int:
         print("[sidecar] PyInstaller 失败")
         return r.returncode
     STAMP.write_text(fp)
+    for stale in STALE_ONEFILE:
+        if stale.exists():
+            stale.unlink()
+            print(f"[sidecar] 已清理历史 onefile 产物：{stale}")
     print(f"[sidecar] 完成：{find_exe()}")
     return 0
 

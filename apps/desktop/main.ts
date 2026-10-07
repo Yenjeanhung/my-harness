@@ -263,8 +263,11 @@ async function ensureServer(workspace?: string | null): Promise<"attached" | "st
   const wsArgs = workspace ? ["--workspace", workspace] : [];
   const attempts: SpawnAttempt[] = [];
   if (process.resourcesPath) {
-    const f = path.join(process.resourcesPath, "harness-server.exe");
-    if (fs.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT, ...wsArgs] });
+    // onedir 目录版（常规产物，免解压、冷启动快）优先；单文件 onefile 兜底兼容旧安装包
+    const dirExe = path.join(process.resourcesPath, "harness-server", "harness-server.exe");
+    const fileExe = path.join(process.resourcesPath, "harness-server.exe");
+    if (fs.existsSync(dirExe)) attempts.push({ file: dirExe, args: ["--port", PORT, ...wsArgs] });
+    if (fs.existsSync(fileExe)) attempts.push({ file: fileExe, args: ["--port", PORT, ...wsArgs] });
   }
   attempts.push({
     cmd: process.platform === "win32" ? "harness.exe" : "harness",

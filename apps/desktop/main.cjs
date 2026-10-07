@@ -229,8 +229,10 @@ async function ensureServer(workspace) {
   const wsArgs = workspace ? ["--workspace", workspace] : [];
   const attempts = [];
   if (process.resourcesPath) {
-    const f = import_path.default.join(process.resourcesPath, "harness-server.exe");
-    if (import_fs.default.existsSync(f)) attempts.push({ file: f, args: ["--port", PORT, ...wsArgs] });
+    const dirExe = import_path.default.join(process.resourcesPath, "harness-server", "harness-server.exe");
+    const fileExe = import_path.default.join(process.resourcesPath, "harness-server.exe");
+    if (import_fs.default.existsSync(dirExe)) attempts.push({ file: dirExe, args: ["--port", PORT, ...wsArgs] });
+    if (import_fs.default.existsSync(fileExe)) attempts.push({ file: fileExe, args: ["--port", PORT, ...wsArgs] });
   }
   attempts.push({
     cmd: process.platform === "win32" ? "harness.exe" : "harness",

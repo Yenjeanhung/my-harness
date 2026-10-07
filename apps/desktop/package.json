@@ -70,8 +70,8 @@
     ],
     "extraResources": [
       {
-        "from": "build/harness-server.exe",
-        "to": "harness-server.exe"
+        "from": "build/harness-server",
+        "to": "harness-server"
       },
       {
         "from": "build/rg",

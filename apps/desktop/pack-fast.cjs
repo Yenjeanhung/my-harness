@@ -36,6 +36,9 @@ function copyIfChanged(src, dest) {
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(src, dest);
+  // 回写源 mtime：否则拷贝后 dest mtime 变"现在"，下轮 same() 永远失配、每包重拷
+  const st = fs.statSync(src);
+  fs.utimesSync(dest, st.atime, st.mtime);
   copied++;
 }
 
@@ -48,6 +51,23 @@ function copyDirIncremental(src, dest, skipNames = []) {
     if (name.isDirectory()) copyDirIncremental(s, d, skipNames);
     else copyIfChanged(s, d);
   }
+}
+
+// 删掉 dest 里 src 已不存在的残留（sidecar 重建后文件集可能变化，保持精确同步）
+function pruneExtra(src, dest) {
+  if (!fs.existsSync(dest)) return 0;
+  let n = 0;
+  for (const name of fs.readdirSync(dest, { withFileTypes: true })) {
+    const s = path.join(src, name.name);
+    const d = path.join(dest, name.name);
+    if (!fs.existsSync(s)) {
+      fs.rmSync(d, { recursive: true, force: true });
+      n++;
+      continue;
+    }
+    if (name.isDirectory()) n += pruneExtra(s, d);
+  }
+  return n;
 }
 
 function fatal(msg) {
@@ -126,23 +146,29 @@ fs.writeFileSync(
 );
 copyDirIncremental(path.join(ROOT, "node_modules", "@lydell"), path.join(APP, "node_modules", "@lydell"));
 
-// 4) sidecar 与 rg（extraResources 的等价物）：变了才拷；被运行中的应用锁住时警告并继续
+// 4) sidecar（onedir 目录）与 rg（extraResources 的等价物）：变了才拷；被运行中的应用锁住时警告并继续
 //    （界面迭代不需要新 sidecar；退出应用后下次 pack 会自动补上）
-const sidecar = path.join(ROOT, "build", "harness-server.exe");
-if (fs.existsSync(sidecar)) {
-  const dest = path.join(RES, "harness-server.exe");
-  if (same(sidecar, dest)) {
-    skipped++;
-  } else {
-    try {
-      fs.copyFileSync(sidecar, dest);
-      copied++;
-    } catch {
-      console.warn("[pack] sidecar 新版暂未放入（旧版正被运行中的应用锁着）：退出应用后再跑一次 npm run pack 完成更新");
+const sidecarDir = path.join(ROOT, "build", "harness-server");
+if (fs.existsSync(sidecarDir)) {
+  const dest = path.join(RES, "harness-server");
+  try {
+    copyDirIncremental(sidecarDir, dest);
+    copied += pruneExtra(sidecarDir, dest);
+    // 历史 onefile 单文件残留：升级便携包时清掉（应用正在跑它时删不掉，下次再清）
+    const legacy = path.join(RES, "harness-server.exe");
+    if (fs.existsSync(legacy)) {
+      try {
+        fs.rmSync(legacy, { force: true });
+        copied++;
+      } catch {
+        console.warn("[pack] 旧版 onefile sidecar 暂未清理（正被运行中的应用锁着）：退出应用后再跑一次 npm run pack");
+      }
     }
+  } catch {
+    console.warn("[pack] sidecar 部分文件暂未更新（正被运行中的应用锁着）：退出应用后再跑一次 npm run pack 完成更新");
   }
 } else {
-  console.warn("[pack] build/harness-server.exe 不存在：包里没有内嵌 daemon，启动会走 PATH 上的 harness");
+  console.warn("[pack] build/harness-server/ 不存在：包里没有内嵌 daemon，启动会走 PATH 上的 harness");
 }
 const rg = path.join(ROOT, "build", "rg", process.platform === "win32" ? "rg.exe" : "rg");
 if (fs.existsSync(rg)) copyIfChanged(rg, path.join(RES, "bin", path.basename(rg)));

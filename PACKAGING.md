@@ -3,7 +3,7 @@
 两条流水线，顺序执行：
 
 ```
-Python 内核 ──PyInstaller──▶ harness-server.exe（sidecar）
+Python 内核 ──PyInstaller(onedir)──▶ harness-server/（sidecar 目录）
                                         │ 内嵌
 Electron + React ──electron-builder──▶ My-Harness Setup x.x.x.exe（NSIS 安装包）
 ```
@@ -36,36 +36,27 @@ python packaging/build_sidecar.py
 ```
 
 - **带缓存**：`src/harness` 源码与 PyInstaller 版本没变时直接复用上次产物（哈希记录在 `packaging/.build_hash`），秒级跳过；只有 Python 源码真的变了才全量重打；
-- 等价的手动命令（build_sidecar.py 内部执行的就是它）：
+- 等价的手动命令（build_sidecar.py 内部执行的就是它，onedir 构建定义全在 spec 里）：
 
 ```bash
-pyinstaller --onefile --name harness-server \
-  --collect-all litellm \
-  --collect-all tiktoken \
-  --collect-all tiktoken_ext \
-  --collect-all mcp \
-  --collect-all uvicorn \
-  --collect-all langchain \
-  --collect-all langchain_core \
-  --collect-all langchain_openai \
-  --collect-all langgraph \
-  --hidden-import anyio._backends._asyncio \
-  packaging/server_entry.py
+pyinstaller --noconfirm --distpath dist --workpath packaging/build packaging/harness-server.spec
 ```
 
-- 产物：`dist/harness-server.exe`（onefile，约 60-120MB，启动需 3-10 秒解压，属正常）；
+- 产物：`dist/harness-server/`（**onedir 目录**，入口 `harness-server/harness-server.exe`、依赖在 `_internal/`，
+  约 200-300MB 落盘但**免解压**——onefile 时代每次启动解压 100MB+ 实测 3-20 秒，正是桌面端
+  「等待连接」空窗的主因，且 onefile 是杀毒误报重灾区）；
 - `--collect-all litellm` 是必须的：litellm 用 importlib 动态加载各家 provider 子模块，静态分析收不齐；
 - 验证（**必做**：构建期间源码还在改会打出半成品——version 与事件协议都可能是旧的）：
 
 ```bash
-./dist/harness-server.exe --port 8123 &
-sleep 10 && curl http://127.0.0.1:8123/health
+./dist/harness-server/harness-server.exe --port 8123 &
+sleep 5 && curl http://127.0.0.1:8123/health
 # 期望 {"status":"ok","version":"<与 apps/desktop/package.json 一致>",...}
 # version 不一致 = 产物过期，改完源码后重新执行本步
 ```
 
-> prepkg.cjs 会在 `packaging/dist/` 与根 `dist/` 里挑较新的产物，无需手动拷贝；
-> 也可以把根 `dist/harness-server.exe` 拷到 `packaging/dist/` 保持旧习惯。
+> prepkg.cjs 会在 `packaging/dist/` 与根 `dist/` 里挑较新的 onedir 目录，无需手动拷贝；
+> 也可以把根 `dist/harness-server/` 拷到 `packaging/dist/` 保持旧习惯。
 
 ## 第 2 步：打包 Windows 安装包
 
@@ -99,16 +90,16 @@ npm run dist:fast      # electron-builder 免安装目录 dist/win-unpacked/，�
 npm run dist           # 发版：NSIS 安装包 + zip 全量压缩
 ```
 
-- `prepkg.cjs` 会把 `packaging/dist/harness-server.exe` 拷到 `apps/desktop/build/`（没变化时跳过拷贝），electron-builder 经 extraResources 内嵌进安装包 resources/；
+- `prepkg.cjs` 会把 onedir 产物整目录（`packaging/dist/harness-server/` 或根 `dist/harness-server/`，取较新）同步到 `apps/desktop/build/harness-server/`（manifest 没变化时跳过），electron-builder 经 extraResources 内嵌进安装包 resources/，增量便携包由 pack-fast.cjs 做同样的整目录同步；
 - `prepkg.cjs` 同时会把 PATH 上找到的 `rg.exe`（ripgrep）拷到 `apps/desktop/build/rg/`，经 extraResources 放到 resources/bin；主进程拉起 daemon 时把该目录前插进 PATH，服务端搜索（ripgrep 加速）即生效——找不到 rg 只告警，运行时退回 Python 遍历搜索；
 - 产物：`apps/desktop/dist/My-Harness Setup <版本>.exe`（NSIS 安装包，内嵌 sidecar）；
-- 安装包内的启动逻辑：优先连接已运行的 daemon → 尝试 resources 里的 `harness-server.exe` → 回退 PATH 中的 `harness serve`。
+- 安装包内的启动逻辑：优先连接已运行的 daemon → 尝试 resources 里的 `harness-server/harness-server.exe`（onedir）→ 旧包的单文件 `harness-server.exe` 兜底 → 回退 PATH 中的 `harness serve`。
 
 ## 产物清单与使用
 
 | 文件 | 说明 |
 |---|---|
-| `dist/harness-server.exe` | 独立 daemon，可单独分发（`harness-server.exe --port 8765`） |
+| `dist/harness-server/` | 独立 daemon（onedir 目录，`harness-server.exe --port 8765` 可单独分发） |
 | `apps/desktop/out/y-harness-portable/` | **增量便携包**（日常迭代产物，秒级重打包） |
 | `apps/desktop/dist/My-Harness Setup *.exe` | Windows 安装包（双击安装 / `/S` 静默安装） |
 | `apps/desktop/dist/win-unpacked/` | electron-builder 免安装目录版（旧便携路径） |
@@ -120,7 +111,7 @@ npm run dist           # 发版：NSIS 安装包 + zip 全量压缩
 1. **sidecar 启动报 `ModuleNotFoundError: litellm.llms...`**：说明 `--collect-all litellm` 漏了，或依赖更新后新增了动态导入模块——补对应 `--collect-all`。
 2. **打包装不了 / SmartScreen 警告**：未签名属正常。正式分发需要代码签名证书（`win.sign` 配置），详见 DESIGN.md §9。
 3. **无应用图标**：当前使用 Electron 默认图标；放一个 `apps/desktop/build/icon.ico`（256x256 以上，多尺寸）后 electron-builder 自动采用。
-4. **杀毒软件报 sidecar**：PyInstaller onefile 的常见误报，签名后消失；也可改 `--onedir` 模式（`win-unpacked` 更快启动、误报率低）。
+4. **杀毒软件报 sidecar**：onefile 单文件的常见误报；sidecar 已改 onedir（默认形态，误报率低），如仍有报毒加白名单或上代码签名。
 5. **配置文件**：安装版同样读取 CWD 下的 `my-harness.toml` 与环境变量 API key；首次使用建议先在终端跑通 `harness chat` 再用桌面端。
 
 ## 可选：绿色便携包

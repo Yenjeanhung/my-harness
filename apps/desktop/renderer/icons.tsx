@@ -427,7 +427,7 @@ export function Icon({ name, size = 13, filled = false }: { name: IconName; size
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ display: "block" }}
+      style={{ display: "block", width: size, height: size, flex: "none" }}
     >
       {ICON_PATHS[name]}
     </svg>

@@ -412,6 +412,8 @@ function App() {
   });
   const [contentResults, setContentResults] = useState<ContentResult[]>([]);
   const [searchQ, setSearchQ] = useState("");
+  // 「搜索会话」按钮：打开侧栏会话 tab 并把焦点交给搜索框（自增 tick 驱动 focus）
+  const [sessSearchFocus, setSessSearchFocus] = useState(0);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // 待确认删除的 session_id
   const [settings, setSettings] = useState<SettingsState>({
@@ -439,7 +441,7 @@ function App() {
   const [termOpen, setTermOpen] = useState(false); // 内嵌终端面板（编辑器下方抽屉）
   // —— 工作台（IDE，见 IDE-DESIGN.md）——
   // editorOpen=false 即「对话模式」：编辑器让位、对话占满主区（actbar 会话键切换）
-  const [editorOpen, setEditorOpen] = useState(true);
+  const [editorOpen, setEditorOpen] = useState(false); // 默认会话模式（ZCode 式大对话）；代码模式点活动栏「资源管理器」等进入
   const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1269,6 +1271,11 @@ function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQ, view, conn]);
+  // 头部「搜索会话」：侧栏会话列表渲染出来后聚焦搜索框
+  useEffect(() => {
+    if (!sessSearchFocus) return;
+    setTimeout(() => document.getElementById("sess-search")?.focus(), 60);
+  }, [sessSearchFocus]);
 
   // 输入框引用 token → 镜像层卡片（发送时 composeMessage 原样展开，正则保持一致）
   const INPUT_REF_TOKEN = /@([^\s@:，。；、]+?):(\d+)-(\d+)/g;
@@ -1968,18 +1975,19 @@ function App() {
   );
   // 顶栏（CodeBuddy 式）：按住可拖动窗口，右侧面板开关；更右边的最小化/关闭由系统 WCO 绘制。
   // 菜单栏依赖工作区视图的后置声明（toggleRail 等），构造放下面；设置页顶栏不带菜单。
-  const titlebarWith = (menu: React.ReactNode) => (
+  const titlebarWith = (menu: React.ReactNode, showToggles: boolean) => (
     <div className="titlebar">
       <span className="tb-title">Y Harness</span>
       {menu}
-      <div className="panel-toggles">{panelToggles}</div>
+      {/* 面板开关（左侧栏/终端/对话栏）是代码模式专属；对话模式/设置页 = ZCode 式干净顶栏（侧栏收起后有左缘浮出按钮可恢复） */}
+      {showToggles && <div className="panel-toggles">{panelToggles}</div>}
     </div>
   );
   if (view === "settings") {
     const pages = { models: modelsPage, memory: memoryPage, mcp: mcpPage, skills: skillsPage, general: generalPage };
     return (
       <div className="root">
-        {titlebarWith(null)}
+        {titlebarWith(null, false)}
         <div className="settings-screen">
         <aside className="settings-menu">
           <div className="back" onClick={() => setView("chat")}>← 返回工作区</div>
@@ -2007,17 +2015,13 @@ function App() {
   // 活动栏当前激活项：会话 / 代码下的三个子视图（与 VSCode 一致，点击已激活项收起侧栏）
   const railActive = sideTab === "sessions" ? "sessions" : codeMode;
   const toggleRail = (target: "sessions" | "tree" | "search" | "git") => {
-    // 会话键 = 对话/代码模式开关：点一下进对话模式（编辑器让位、对话占满主区），再点回代码模式（tab 全保留）
+    // 会话键 = 恒定进入对话模式（不是双向开关）：大对话窗口 + 左侧会话管理栏；回代码模式走资源管理器/搜索/源代码管理键
     if (target === "sessions") {
-      if (editorOpen) {
-        setEditorOpen(false);
-        setSideTab("sessions");
-        setShowProjects(false);
-        setSidebarOpen(true);
-        setChatHidden(false); // 对话模式下对话栏必须可见，否则主区空白
-      } else {
-        setEditorOpen(true);
-      }
+      setEditorOpen(false);
+      setSideTab("sessions");
+      setShowProjects(false);
+      setSidebarOpen(true); // 会话管理栏（分组/列表）常显
+      setChatHidden(false); // 对话模式下对话栏必须可见，否则主区空白
       return;
     }
     // 代码类视图：总是回到代码模式
@@ -2138,7 +2142,8 @@ function App() {
       ],
     },
   ];
-  const titlebar = titlebarWith(<MenuBar menus={menus} />);
+  // 菜单（文件/编辑/查看/转到/终端/帮助）与面板开关是代码模式专属：对话模式 = ZCode 式纯对话界面
+  const titlebar = titlebarWith(editorOpen ? <MenuBar menus={menus} /> : null, editorOpen);
   return (
     <div className="root">
       {titlebar}
@@ -2180,6 +2185,7 @@ function App() {
         <div className="aside-body">
         {sideTab === "sessions" && !showProjects && (
           <input
+            id="sess-search"
             className="search"
             placeholder="搜索会话标题与内容…"
             value={searchQ}
@@ -2640,7 +2646,7 @@ function App() {
         </>
       )}
       <div
-        className="main chat-col"
+        className={"main chat-col" + (!editorOpen ? " chat-wide" : "")}
         style={
           editorOpen && chatHidden
             ? { display: "none" } // 收起对话栏：编辑器占满主区，右缘浮出 « 重开按钮
@@ -2652,49 +2658,42 @@ function App() {
         <header>
           <span className={"dot " + dot} />
           <span className="title topic" title={currentTitle}>{currentTitle}</span>
-          {!fileMode && (
-          <span className="meta">
-            {conn} · {shortModel(currentModel)}
-            {running ? ` · ⏱ ${fmtClock(elapsed)}` : ""}
-          </span>
-          )}
-          {(() => {
-            if (!ctxInfo || ctxInfo.window <= 0 || ctxInfo.tokens <= 0) return null;
-            const pct = Math.min(100, (ctxInfo.tokens / ctxInfo.window) * 100);
-            const color = pct >= 85 ? "#f85149" : pct >= 70 ? "#e3b341" : "#4493f8";
-            const r = 6, c = 2 * Math.PI * r;
-            return (
-              <button className={"ctx-chip" + (ctxOpen ? " on" : "")} title="上下文容量" onClick={() => setCtxOpen((o) => !o)}>
-                <svg width="16" height="16" viewBox="0 0 16 16" style={{ display: "block" }}>
-                  <circle cx="8" cy="8" r={r} fill="none" stroke="#30363d" strokeWidth="2.5" />
-                  <circle
-                    cx="8" cy="8" r={r} fill="none" stroke={color} strokeWidth="2.5"
-                    strokeDasharray={`${(pct / 100) * c} ${c}`} strokeLinecap="round"
-                    transform="rotate(-90 8 8)"
-                  />
-                </svg>
-                {Math.round(pct)}%
+          {/* 上下文圆环/连接信息已并入输入框上方用量条（两种模式统一），头部只留标题 */}
+          {/* 头部按钮是代码模式专属（新建/历史/搜索三键）；对话模式管理入口都在左侧会话栏，头部保持干净 */}
+          {fileMode && (
+            <>
+              <button className="head-ic" title="新建会话" onClick={newSession}>
+                <Icon name="plus" size={14} />
               </button>
-            );
-          })()}
-          {/* CodeBuddy 式：对话历史 / 新建对话 常驻对话栏头部 */}
-          <button
-            className="head-ic"
-            title="对话历史（打开会话列表）"
-            onClick={() => {
-              setSideTab("sessions");
-              setShowProjects(false);
-              setSidebarOpen(true);
-            }}
-          >
-            <Icon name="history" size={14} />
-          </button>
-          <button className="head-ic" title="新建对话" onClick={newSession}>
-            <Icon name="plus" size={14} />
-          </button>
+              <button
+                className="head-ic"
+                title="会话历史（打开会话列表）"
+                onClick={() => {
+                  setSideTab("sessions");
+                  setShowProjects(false);
+                  setSidebarOpen(true);
+                }}
+              >
+                <Icon name="history" size={14} />
+              </button>
+              <button
+                className="head-ic"
+                title="搜索会话（标题与内容）"
+                onClick={() => {
+                  setSideTab("sessions");
+                  setShowProjects(false);
+                  setSidebarOpen(true);
+                  setSessSearchFocus((n) => n + 1);
+                }}
+              >
+                <Icon name="search" size={14} />
+              </button>
+            </>
+          )}
         </header>
+        {/* 详情卡从用量条向上弹（触发点在输入框上方，两种模式统一） */}
         {ctxOpen && ctxInfo && ctxInfo.window > 0 && (
-          <div className="ctx-pop" ref={ctxPopRef}>
+          <div className="ctx-pop up" ref={ctxPopRef}>
             {(() => {
               const pct = Math.min(100, (ctxInfo.tokens / ctxInfo.window) * 100);
               const statPct = Math.min(100, (ctxInfo.static / ctxInfo.window) * 100);
@@ -2944,28 +2943,52 @@ function App() {
             </button>
           </div>
         )}
-        {/* 用量条（CodeBuddy 式）：运行中实时刷新；结束后冻结为最近一次对话的耗时与 token；尾部会话累计 */}
-        {(running || lastRun || sessCost) && (
-          <div className="usage-strip">
-            {running ? (
-              <span className="us-live" title="本次对话进行中">
-                <Icon name="refresh" size={11} /> {fmtClock(elapsed)} · ↑{fmtTok(runUsage?.input_tokens || 0)} ↓{fmtTok(runUsage?.output_tokens || 0)} tok
-              </span>
-            ) : lastRun ? (
-              <span title="最近一次对话">
-                最近 <Icon name="history" size={11} /> {fmtClock((lastRun.duration_ms || 0) / 1000)}
-                {lastRun.usage ? ` · ↑${fmtTok(lastRun.usage.input_tokens)} ↓${fmtTok(lastRun.usage.output_tokens)} tok` : ""}
-              </span>
-            ) : null}
-            {(sessCost || runUsage) && (
-              <span title="当前会话累计（含进行中）">
-                会话 ↑{fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓
-                {fmtTok((sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0))} tok
-              </span>
-            )}
-            {sessCost?.cost_usd != null && <span>{fmtCost(sessCost.cost_usd)}</span>}
-          </div>
-        )}
+        {/* 用量条：上下文圆环 + 运行中实时刷新 + 最近一次对话 + 会话累计，两种模式统一在输入框上方（头部不再显示） */}
+        {(() => {
+          const ctxValid = !!ctxInfo && ctxInfo.window > 0 && ctxInfo.tokens > 0;
+          if (!(running || lastRun || sessCost || ctxValid)) return null;
+          const pct = ctxValid ? Math.min(100, (ctxInfo!.tokens / ctxInfo!.window) * 100) : 0;
+          const color = pct >= 85 ? "#f85149" : pct >= 70 ? "#e3b341" : "#4493f8";
+          const r = 6, c = 2 * Math.PI * r;
+          return (
+            <div className="usage-strip">
+              {ctxValid && (
+                <button
+                  className={"ctx-chip ctx-mini" + (ctxOpen ? " on" : "")}
+                  title="上下文容量"
+                  onClick={() => setCtxOpen((o) => !o)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" style={{ display: "block" }}>
+                    <circle cx="8" cy="8" r={r} fill="none" stroke="#30363d" strokeWidth="2.5" />
+                    <circle
+                      cx="8" cy="8" r={r} fill="none" stroke={color} strokeWidth="2.5"
+                      strokeDasharray={`${(pct / 100) * c} ${c}`} strokeLinecap="round"
+                      transform="rotate(-90 8 8)"
+                    />
+                  </svg>
+                  {Math.round(pct)}%
+                </button>
+              )}
+              {running ? (
+                <span className="us-live" title="本次对话进行中">
+                  <Icon name="refresh" size={11} /> {fmtClock(elapsed)} · ↑{fmtTok(runUsage?.input_tokens || 0)} ↓{fmtTok(runUsage?.output_tokens || 0)} tok
+                </span>
+              ) : lastRun ? (
+                <span title="最近一次对话">
+                  最近 <Icon name="history" size={11} /> {fmtClock((lastRun.duration_ms || 0) / 1000)}
+                  {lastRun.usage ? ` · ↑${fmtTok(lastRun.usage.input_tokens)} ↓${fmtTok(lastRun.usage.output_tokens)} tok` : ""}
+                </span>
+              ) : null}
+              {(sessCost || runUsage) && (
+                <span title="当前会话累计（含进行中）">
+                  会话 ↑{fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓
+                  {fmtTok((sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0))} tok
+                </span>
+              )}
+              {sessCost?.cost_usd != null && <span>{fmtCost(sessCost.cost_usd)}</span>}
+            </div>
+          );
+        })()}
         <div className="composer">
           {pasteImages.length > 0 && (
             <div className="atchips">

@@ -964,20 +964,10 @@ export function EditorPane(props: {
   const mdToggleRef = useRef(() => {});
   // LSP 状态 chip（python/pyright 等）
   const [lspState, setLspState] = useState<{ language: string; status: string; detail?: string } | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
-  const aiRef = useRef<HTMLDivElement | null>(null);
   // 自绘右键菜单 + 引用面板（坐标为视口坐标，组件内部做贴边修正）
   const [edMenu, setEdMenu] = useState<{ x: number; y: number } | null>(null);
   const [refPanel, setRefPanel] = useState<{ x: number; y: number; items: RefLocation[] } | null>(null);
   const openMenuRef = useRef<(x: number, y: number) => void>(() => {});
-  useEffect(() => {
-    if (!aiOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (aiRef.current && !aiRef.current.contains(e.target as Node)) setAiOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [aiOpen]);
 
   useEffect(() => {
     activeRef.current = props.active;
@@ -1192,9 +1182,8 @@ export function EditorPane(props: {
       props.onAsk(`关于 ${p}:${sel.startLineNumber}-${sel.endLineNumber} 的这段代码：\n\`\`\`\n${selText}\n\`\`\`\n`);
     }
   };
-  // AI 辅助：取选区（无选区=整文件），组装引用后交给 App 发给 Agent
+  // AI 辅助：取选区（无选区=整文件），组装引用后交给 App 发给 Agent（右键菜单调用）
   const runAi = (kind: "explain" | "comment" | "refactor" | "fix" | "test" | "file-review") => {
-    setAiOpen(false);
     const ed = editorRef.current;
     const model = ed?.getModel();
     const p = activePath;
@@ -1214,7 +1203,6 @@ export function EditorPane(props: {
     if (!ed || !model || !p) return;
     const sel = ed.getSelection();
     if (!sel || sel.isEmpty()) return;
-    setAiOpen(false);
     props.onAddRef(p, sel.startLineNumber, sel.endLineNumber);
   };
   runAiRef.current = runAi;
@@ -1455,50 +1443,6 @@ export function EditorPane(props: {
                 <Icon name="download" size={13} />
               </button>
             )}
-            <div className="ai-wrap" ref={aiRef}>
-              <button
-                className={"ed-tool ai" + (aiOpen ? " on" : "")}
-                title="AI 辅助（有选区=作用于选区，无选区=作用于整个文件）"
-                onClick={() => setAiOpen((o) => !o)}
-              >
-                <Icon name="sparkles" size={12} /> AI
-              </button>
-              {aiOpen && (
-                <div className="ai-menu down">
-                  {hasSelection && (
-                    <div className="ai-item" onClick={() => runAi("explain")}>
-                      <Icon name="cpu" size={13} /> 解释这段代码
-                    </div>
-                  )}
-                  {hasSelection && (
-                    <div className="ai-item" onClick={() => runAi("comment")}>
-                      <Icon name="edit" size={13} /> 加注释（直接修改）
-                    </div>
-                  )}
-                  {hasSelection && (
-                    <div className="ai-item" onClick={() => runAi("refactor")}>
-                      <Icon name="zap" size={13} /> 重构优化（直接修改）
-                    </div>
-                  )}
-                  {hasSelection && (
-                    <div className="ai-item" onClick={() => runAi("fix")}>
-                      <Icon name="shield-alert" size={13} /> 修复问题（直接修改）
-                    </div>
-                  )}
-                  <div className="ai-item" onClick={() => runAi("test")}>
-                    <Icon name="file" size={13} /> 写单元测试
-                  </div>
-                  <div className="ai-item" onClick={() => runAi("file-review")}>
-                    <Icon name="search" size={13} /> 审阅整个文件
-                  </div>
-                  {hasSelection && (
-                    <div className="ai-item" onClick={() => { setAiOpen(false); addRef(); }}>
-                      <Icon name="download" size={13} /> 插入到对话（带行号引用）
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
             </div>
             {isEmpty && (
               <div className="ed-empty ed-overlay">

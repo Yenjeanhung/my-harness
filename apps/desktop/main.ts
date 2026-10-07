@@ -62,7 +62,10 @@ function saveProjects(p: ProjectsState) {
   fs.mkdirSync(path.dirname(projectsFile()), { recursive: true });
   fs.writeFileSync(projectsFile(), JSON.stringify(p, null, 2), "utf8");
 }
-// 切项目 = 带新 --workspace 重启 daemon（每个项目独立记忆库/AGENT.md/skills，ZCode 同思路）
+// 切项目：渲染层先向 daemon 发 SetWorkspace 进程内热切换（秒级），成功后 daemon 的
+// /health 已指向新工作区 → open-project 里 serverMatches 命中直接附着，不再重启。
+// 这里保留的重启路径只在 daemon 不在跑/版本不匹配/旧 daemon 不认识 SetWorkspace 时兜底。
+// 每个项目仍有独立的记忆库/AGENT.md/skills（热切换时由 daemon 进程内重建，语义一致）
 // 注意：调用方（open-project）须先等 serverStartup 落定——启动期的后台 ensureServer 与这里的杀/启互斥
 let serverStartup: Promise<string> | null = null;
 async function restartServerWithWorkspace(ws: string): Promise<string> {
@@ -327,10 +330,22 @@ ipcMain.handle("term-create", async (_e, cols: number, rows: number) => {
     return { error: `终端启动失败: ${err instanceof Error ? err.message : String(err)}` };
   }
   ptys.set(id, pty);
-  pty.onData((d) => win?.webContents.send("term-data", id, d));
+  // 窗口可能在终端还有输出时被关掉：销毁后 webContents.send 会抛
+  // "Object has been destroyed" 并炸掉主进程（pty 回调里抛出即 uncaught）
+  pty.onData((d) => {
+    if (win && !win.isDestroyed()) {
+      try {
+        win.webContents.send("term-data", id, d);
+      } catch {}
+    }
+  });
   pty.onExit(({ exitCode }) => {
     ptys.delete(id);
-    win?.webContents.send("term-exit", id, exitCode);
+    if (win && !win.isDestroyed()) {
+      try {
+        win.webContents.send("term-exit", id, exitCode);
+      } catch {}
+    }
   });
   return { id, cwd, title: path.basename(cwd) || "终端" };
 });
@@ -350,6 +365,15 @@ ipcMain.on("term-kill", (_e, id: number) => {
     } catch {}
     ptys.delete(id);
   }
+});
+
+// Python 解释器解析（「运行 Python 文件 / 安装语言服务器」往终端写的命令用它拼）：
+// 工作区 .venv 优先（与 daemon 侧 LSP 的解析同思路，项目环境天然匹配），否则 PATH 上的 python
+ipcMain.handle("py-cmd", () => {
+  const ws = currentWorkspace();
+  const sub = process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"];
+  const p = path.join(ws, ...sub);
+  return fs.existsSync(p) ? p : "python";
 });
 
 // app://bundle/index.html?ws=...&server=...（query 经 URLSearchParams 编码，ws:// 里的斜杠不会破 URL）
@@ -377,7 +401,7 @@ app.whenReady().then(async () => {
     }
   } catch {}
 
-  // —— 项目 IPC：原生选文件夹 / 读取最近项目 / 切换项目（重启 daemon）——
+  // —— 项目 IPC：原生选文件夹 / 读取最近项目 / 切换项目（daemon 热切换优先，重启兜底）——
   ipcMain.handle("pick-folder", async () => {
     if (!win) return null;
     const r = await dialog.showOpenDialog(win, {
@@ -412,10 +436,10 @@ app.whenReady().then(async () => {
       saveProjects(st);
       terminalWorkspace = p; // 新开的终端 tab 跟随新项目
     }
-    // 同一项目且 daemon 已在跑对的工作区/版本：不重启，只刷窗口；
-    // 否则带新工作区重启 daemon。无论哪种，页面都要重开——
-    // 旧页面可能卡在「连接断开」（切项目杀了 daemon，且渲染层此前没有自动重连）。
-    const state = same && (await serverMatches(p)) ? "attached" : await restartServerWithWorkspace(p);
+    // daemon 已在跑对的工作区/版本 → 直接附着（同项目秒开；渲染层 SetWorkspace 热切换
+    // 成功后也命中这里，不再重启）。不匹配才带新工作区重启兜底。无论哪种，页面都要重开——
+    // 旧 query 里的 root/serverState 已过期，loadURL 带最新状态重开。
+    const state = (await serverMatches(p)) ? "attached" : await restartServerWithWorkspace(p);
     try {
       // reload 会保留旧 query（serverState 文本过期）；loadURL 带最新状态重开
       await win?.loadURL(rendererUrl({ ws: WS_URL, server: state, root: p }));

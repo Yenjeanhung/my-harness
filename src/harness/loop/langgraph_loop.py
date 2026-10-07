@@ -163,7 +163,7 @@ class LangGraphLoop:
         else:
             allowed, detail = True, "no gate configured"
         if not allowed:
-            return ToolResultBlock(4324
+            return ToolResultBlock(
                 tool_use_id=tu.id,
                 content=(
                     f"Permission denied by harness policy ({detail}). "

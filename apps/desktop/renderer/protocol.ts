@@ -180,6 +180,7 @@ export type WsEvent =
       truncated: boolean;
     }
   | { type: "GitStatus"; repo: boolean; branch: string; ahead?: number; files: { path: string; code: string; xy?: string }[]; error?: string } // error=git 不可用/执行失败的原因（repo:false 且无 error 才是「真·不是仓库」）
+  | { type: "WorkspaceSet"; ok: boolean; workspace: string; already?: boolean } // 工作区热切换完成（SetWorkspace 的应答）
   | { type: "GitDiff"; path: string; diff: string }
   | { type: "GitDone"; op: "stage" | "unstage" | "commit" | "push"; ok: boolean; message: string }
   | { type: "GitCommitMsg"; ok: boolean; message?: string; error?: string }
@@ -216,6 +217,7 @@ export type WsCommand =
   | { type: "TestModel"; model: string; api_key?: string; api_base?: string }
   | { type: "SetPermissionMode"; mode: PermMode }
   | { type: "SetThinking"; level: ThinkLevel }
+  | { type: "SetWorkspace"; path: string } // 工作区热切换：daemon 进程内重建，不重启进程（切项目秒级）
   | { type: "RespondPermission"; request_id: string; answer: "yes" | "always" | "no" }
   | { type: "GetSessionCost"; session_id: string }
   | { type: "GetStats" }
@@ -284,6 +286,8 @@ declare global {
       termKill(id: number): void;
       termOnData(cb: (id: number, data: string) => void): void;
       termOnExit(cb: (id: number, exitCode: number) => void): void;
+      // Python 解释器（工作区 .venv 优先，主进程解析）：运行文件/安装语言服务器的命令用它拼
+      pyCmd(): Promise<string>;
     };
   }
 }

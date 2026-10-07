@@ -87,6 +87,7 @@
 | `LspStart` | `language` | `LspStatus{language, status:"running", root_uri, detail}`（daemon 按探测顺序拉起语言服务器子进程，`settings.json` 的 `lsp.<语言>.command` 可覆盖；已在跑则重启——LSP initialize 每进程只允许一次，页面重载必须拿新会话）；找不到服务器 → `status:"error", detail` |
 | `LspToServer` | `language`, `message`（LSP JSON-RPC 消息原样） | 消息经 daemon 哑管道写进服务器 stdin；服务端回包以 `LspFromServer{language, message}` 事件流回 |
 | `LspStop` | `language` | `LspStatus{status:"stopped"}` |
+| `SetWorkspace` | `path`（项目目录，必须存在） | `WorkspaceSet{ok, workspace, already?}`（**工作区热切换**：daemon 进程内重建绑定工作区的状态——文件/git/LSP 根、记忆库、技能、AGENT.md 系统提示词；不停进程、不断连接。进行中的 run 与内存态会话随旧工作区作废（历史仍可 Resume）；settings/MCP/会话历史为全局件保留。桌面端切项目靠它做到秒级，进程重启只在 daemon 版本不匹配时兜底。`/health` 的 `workspace` 随之更新） |
 | `UploadImage` | `data_url`（image/png\|jpeg\|gif\|webp，≤10MB） | `ImageSaved`（落盘 workspace/attachments/ 并回传 base64） |
 | `RespondPermission` | `request_id`, `answer`: `yes`/`always`/`no` | —（解除挂起的审批 future） |
 | `Ping` | — | `Pong` |
@@ -118,6 +119,7 @@
 | `ContentSearchResult` | `query`, `results[]`(`session_id`, `snippet`) | 全文搜索命中 |
 | `ImageSaved` / `WorkspaceFile` | `path`, `media_type`, `data` / `path`, `content`, `truncated` | 附件就绪 |
 | `DirListing` / `FileContent` / `FileSaved` / `FileBase` | 见对应命令 | 工作台文件事件 |
+| `WorkspaceSet` | `ok`, `workspace`, `already?` | `SetWorkspace` 的应答：工作区热切换完成（同工作区重复切换 `already:true`，一样返回 ok） |
 | `SearchResult` / `GitStatus` / `GitDiff` | 见对应命令 | 工作台搜索与 Git 事件 |
 | `LspStatus` | `language`, `status`: starting/running/stopped/error, `root_uri?`, `detail?` | 编辑器语言服务器生命周期；running 后客户端发 LSP `initialize`（rootUri 由 daemon 以工作区兜底，daemon spawn 时 cwd=工作区） |
 | `LspFromServer` | `language`, `message` | 语言服务器的 JSON-RPC 原样转发（通知/请求/响应都走这里） |

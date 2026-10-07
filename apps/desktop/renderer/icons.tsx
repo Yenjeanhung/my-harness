@@ -233,6 +233,7 @@ export const ICON_PATHS = {
       <path d="M12 7v5l4 2" />
     </>
   ),
+  play: <path d="M6 4l14 8-14 8V4z" />,
 };
 
 export type IconName = keyof typeof ICON_PATHS;
@@ -263,6 +264,17 @@ interface TermTab {
   cwd: string;
 }
 
+// 「往终端写命令」的跨组件通道：面板未挂载时命令先入队，挂载后自动消化
+// （运行 Python 文件 / 一键安装语言服务器都走这里——命令在可见终端里执行，用户看得到全过程）
+let pendingTermCmds: string[] = [];
+// 会话模式下编辑器列整体 display:none 但仍挂载着一个隐藏 TerminalPanel 实例：
+// 串行链保证命令只被消化一次，可见性检查保证是可见的那个实例开的终端
+let termCmdChain: Promise<void> = Promise.resolve();
+export function runInTerminal(cmd: string) {
+  pendingTermCmds.push(cmd);
+  window.dispatchEvent(new CustomEvent("wb-term-cmd"));
+}
+
 export function TerminalPanel({ onClose }: { onClose: () => void }) {
   const [tabs, setTabs] = useState<TermTab[]>([]);
   const [active, setActive] = useState<number | null>(null);
@@ -274,9 +286,12 @@ export function TerminalPanel({ onClose }: { onClose: () => void }) {
     activeRef.current = active;
   }, [active]);
 
-  // 全局事件接线只挂一次：data/exit 按 id 路由到对应 xterm
+  // 全局事件接线只挂一次：data/exit 按 id 路由到对应 xterm；
+  // dataSeen 记录各 pty 是否已吐过输出（shell 提示符就绪的信号，drain 写命令前等它）
+  const dataSeen = useRef<Set<number>>(new Set());
   useEffect(() => {
     window.myharness?.termOnData?.((id, data) => {
+      dataSeen.current.add(id);
       termsRef.current.get(id)?.term.write(data);
     });
     window.myharness?.termOnExit?.((id) => {
@@ -291,15 +306,15 @@ export function TerminalPanel({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openTerminal = async () => {
+  const openTerminal = async (): Promise<number | null> => {
     const host = hostRef.current;
-    if (!host || !window.myharness?.termCreate) return;
+    if (!host || !window.myharness?.termCreate) return null;
     // 面板刚挂载时尺寸可能是 0：先给占位行列，挂上后 fit 校正
     const res = await window.myharness.termCreate(80, 24);
     if (res.error) {
       alert(`终端打开失败：${res.error}`);
       onClose();
-      return;
+      return null;
     }
     const { id, cwd, title } = res;
     const term = new Terminal({
@@ -322,7 +337,41 @@ export function TerminalPanel({ onClose }: { onClose: () => void }) {
     termsRef.current.set(id, { term, fit });
     setTabs((prev) => [...prev, { id, title, cwd }]);
     setActive(id);
+    return id;
   };
+
+  // 排队的命令落到当前活动终端（没有就先开一个）：挂载时与 wb-term-cmd 事件到达时各消化一次。
+  // 隐藏实例（display:none）不抢：命令要在用户看得见的终端里跑
+  useEffect(() => {
+    const drain = () => {
+      if (!pendingTermCmds.length) return;
+      const host = hostRef.current;
+      if (!host || host.offsetParent === null) return;
+      termCmdChain = termCmdChain.then(async () => {
+        while (pendingTermCmds.length) {
+          let id = activeRef.current;
+          const created = id == null || !termsRef.current.has(id);
+          if (created) id = await openTerminal();
+          if (id == null) return;
+          const c = pendingTermCmds.shift()!;
+          // 新开的终端：等 shell 吐出第一段输出（提示符就绪）再写命令——固定延时猜不准
+          // PowerShell 的启动时长，写早了整行输入会被吞（提示符上什么都不出现）。
+          // 复用已有终端则已在提示符处，直接写。
+          if (created && !dataSeen.current.has(id)) {
+            const t0 = Date.now();
+            while (!dataSeen.current.has(id) && Date.now() - t0 < 15000) {
+              await new Promise((r) => setTimeout(r, 100));
+            }
+          }
+          window.myharness?.termInput?.(id, c.endsWith("\r") ? c : c + "\r");
+        }
+      });
+    };
+    drain();
+    window.addEventListener("wb-term-cmd", drain);
+    return () => window.removeEventListener("wb-term-cmd", drain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 激活 tab：把 xterm DOM 挂到 host 并 fit
   useEffect(() => {

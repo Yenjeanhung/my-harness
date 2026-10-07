@@ -9,12 +9,13 @@
                  / ListMemory / ReadMemoryFile / DeleteMemoryFile / DeleteMemoryBlock
                  / ListMcp / AddMcpServer / RemoveMcpServer / ListSkills / Ping
                  / GetSessionCost / GetStats / OpenDataDir / TestModel / ForkSession
+                 / SetWorkspace
   server→client: SessionCreated / SessionResumed / SessionList / RunStarted / TokenDelta
                  / ReasoningDelta / ToolCallArgs / ToolCallStarted / ToolCallOutput / ToolCallResult
                  / Notice / PermissionRequest
                  / RunFinished(含 duration_ms + usage/cost_usd) / Error / ModelSet / Settings
                  / WorkspaceFile / MemoryList / MemoryFileContent / McpList / SkillList / Pong
-                 / SessionCost / Stats / ModelTestResult
+                 / SessionCost / Stats / ModelTestResult / WorkspaceSet
 模型与 API Key 经 SetModel 持久化到 data_dir/settings.json，优先于 my-harness.toml 的 [agent]。
 """
 
@@ -274,6 +275,8 @@ class ServerState:
                 loop.permissions.mode = mode
             self._notify({"type": "Notice", "text": f"权限模式 → {mode}"})
             self._notify(self._settings_payload())
+        elif t == "SetWorkspace":
+            await self._set_workspace(msg)
         elif t == "SetThinking":
             level = msg.get("level")
             if level not in THINKING_LEVELS:
@@ -764,6 +767,56 @@ class ServerState:
                         p.api_base = None
         save_settings(self.cfg.data_dir, self.settings)
         self._notify(self._settings_payload())
+
+    # —— 工作区热切换（VS Code 式切项目不重启 daemon）：桌面端「切换项目」秒级完成的关键 ——
+    # daemon 进程保持存活（省掉 PyInstaller sidecar 5-20s 的冷启动），进程内重建绑定工作区的
+    # 状态：文件/git/LSP 根目录、记忆库、技能、AGENT.md 系统提示词。保留全局件：settings、
+    # EventStore（会话历史跨项目保留）、MCP 连接。进行中的 run 与内存态会话循环随旧工作区
+    # 作废（与重启同语义；历史仍在库里，恢复会话时按新工作区重建工具上下文）。
+    async def _set_workspace(self, msg: dict) -> None:
+        raw = str(msg.get("path") or "").strip()
+        new_ws = Path(raw).expanduser()
+        if not raw or not new_ws.is_dir():
+            raise ValueError(f"workspace '{raw}' is not a directory")
+        new_ws = new_ws.resolve()
+        if Path(self.cfg.workspace).resolve() != new_ws:
+            # 1) 停进行中的 run、清内存会话（ctx.workspace_root 绑着旧根）
+            for task in list(self.running.values()):
+                task.cancel()
+            self.running.clear()
+            self.sessions.clear()
+            self.static_tokens.clear()
+            # 2) 旧语言服务器（rootUri/cwd=旧项目）全部停掉；页面重载后会重新 LspStart
+            await self.lsp.shutdown()
+            # 3) 换工作区并重建绑定件
+            self.cfg.workspace = new_ws
+            self.vault = MemoryVault(self.cfg.data_dir, new_ws)
+            self.skills = SkillRegistry(
+                [Path(self.cfg.data_dir) / "skills", new_ws / ".my-harness" / "skills"]
+                if self.cfg.skills_enabled
+                else []
+            )
+            self.skills.load()
+            # 4) 注册表：摘掉闭包绑着旧实例的记忆/技能工具再挂新的（其余工具与工作区无关）
+            for prefix in ("memory_", "block_", "search_history", "load_skill"):
+                self.registry.remove_prefix(prefix)
+            for tool in build_memory_tools(self.vault):
+                self.registry.register(tool)
+            for tool in build_skill_tools(self.skills):
+                self.registry.register(tool)
+            # 5) 系统提示词（新项目的 AGENT.md + 技能摘要）
+            import platform
+
+            system = SYSTEM_TEMPLATE.format(workspace=new_ws, platform=platform.platform())
+            agent_md = load_agent_md(new_ws, self.cfg.data_dir)
+            if agent_md:
+                system += "\n\n" + agent_md
+            if self.skills.summary():
+                system += "\n\n" + self.skills.summary()
+            self.system = system
+            # 6) 新 LSP 管理器（rootUri/cwd 跟到新项目；settings 的 lsp 覆盖继续生效）
+            self.lsp = LspManager(new_ws, self.settings, self._notify)
+        self._notify({"type": "WorkspaceSet", "ok": True, "workspace": str(new_ws)})
 
     # —— 记忆管理 / MCP / 技能（设置页面板） ——
     def _effective_mcp(self) -> dict:

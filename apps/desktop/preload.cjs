@@ -18,5 +18,7 @@ import_electron.contextBridge.exposeInMainWorld("myharness", {
   },
   termOnExit: (cb) => {
     import_electron.ipcRenderer.on("term-exit", (_e, id, code) => cb(id, code));
-  }
+  },
+  // Python 解释器（工作区 .venv 优先）：运行文件/安装语言服务器的命令用它拼
+  pyCmd: () => import_electron.ipcRenderer.invoke("py-cmd")
 });

@@ -290,13 +290,13 @@ export function FileTree(props: {
   onOpen(path: string, line?: number): void;
   onDiff(path: string): void;
   onRefresh(): void;
-  onCollapse(): void; // 收起侧栏（VSCode 资源管理器标题栏最后一个按钮）
   onStage(path: string): void;
   onStageAll(): void;
   onUnstage(path: string): void;
   onCommit(message: string, all: boolean, push: boolean): void;
   onPush(): void;
   onGenMsg(): void;
+  onRunFile(path: string): void; // 运行 Python 脚本（右键菜单 → 内嵌终端）
 }) {
   const [entries, setEntries] = useState<Record<string, DirEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set([""]));
@@ -585,9 +585,6 @@ export function FileTree(props: {
             >
               <Icon name="fold" size={13} />
             </button>
-            <button className="ft-b" title="收起侧栏" onClick={props.onCollapse}>
-              <Icon name="panel" size={13} />
-            </button>
           </span>
         </div>
       )}
@@ -699,6 +696,17 @@ export function FileTree(props: {
       ) : null}
       {ctx && (
         <div className="ctx-menu" ref={ctxRef} style={{ left: ctx.x, top: ctx.y }}>
+          {ctx.kind === "file" && /\.(py|pyw)$/i.test(ctx.path) && (
+            <div
+              className="ai-item"
+              onClick={() => {
+                props.onRunFile(ctx.path);
+                setCtx(null);
+              }}
+            >
+              <Icon name="play" size={13} /> 运行 Python 脚本
+            </div>
+          )}
           {ctx.kind === "dir" && (
             <>
               <div
@@ -881,7 +889,8 @@ function GitPanel(props: {
           <Icon name="sparkles" size={14} />
         </button>
       </div>
-      <div className="git-commit-row">
+      {/* 推送态：整行只留一个「⟳ 推送中…」（原分体式在 34px 窄按钮里塞文字会竖排折行，且与主按钮文案重复） */}
+      <div className={"git-commit-row" + (busy === "push" ? " pushing" : "")}>
         <button
           className="git-commit"
           disabled={busy !== null || !canCommit}
@@ -892,12 +901,18 @@ function GitPanel(props: {
             props.setMsg("");
           }}
         >
-          {busy === "commit" ? "提交中…" : busy === "push" ? "推送中…" : `✓ 提交${staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}`}
+          {busy === "commit" ? (
+            <>
+              <span className="spin" /> 提交中…
+            </>
+          ) : (
+            `✓ 提交${staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}`
+          )}
         </button>
         <button
           className="git-commit-alt push-wrap"
           disabled={busy !== null || (!canCommit && ahead === 0)}
-          title={busy ? (busy === "commit" ? "提交中…" : "推送中…") : canCommit ? "提交并推送（commit + push）" : ahead > 0 ? `推送 ${ahead} 个未推送提交` : "提交并推送（commit + push）"}
+          title={busy === "push" ? "推送中…" : canCommit ? "提交并推送（commit + push）" : ahead > 0 ? `推送 ${ahead} 个未推送提交` : "提交并推送（commit + push）"}
           onClick={() => {
             setBusy("push");
             if (canCommit) {
@@ -908,9 +923,9 @@ function GitPanel(props: {
             }
           }}
         >
-          {busy ? (
+          {busy === "push" ? (
             <>
-              <span className="spin" /> {busy === "commit" ? "提交中" : "推送中"}
+              <span className="spin" /> 推送中…
             </>
           ) : (
             <Icon name="push" size={13} />
@@ -960,6 +975,8 @@ export function EditorPane(props: {
   onAiAction(kind: "explain" | "comment" | "refactor" | "fix" | "test" | "file-review", path: string, sel: string, fromLine: number, toLine: number): void;
   onAddRef(path: string, fromLine: number, toLine: number): void;
   onJump(path: string, line: number): void; // 跳转定义命中 / 行号引用 → App 的 openFile
+  onRunFile(path: string): void; // 运行 Python 文件（工具栏 ▶ / 右键菜单 / Ctrl+F5 → 内嵌终端）
+  onLspInstall(): void; // LSP 不可用角标点击：终端里安装 python-lsp-server
   onConflictReload(): void;
   onConflictKeep(): void;
   onBrowse(): void; // 空态：去文件树
@@ -1049,6 +1066,11 @@ export function EditorPane(props: {
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       const a = propsRef.current.active;
       if (a.kind === "file" && a.path) propsRef.current.onSave(a.path);
+    });
+    // Ctrl+F5 = 运行 Python 文件（VS Code「运行不调试」的键位习惯）
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F5, () => {
+      const a = propsRef.current.active;
+      if (a.kind === "file" && a.path && /\.pyw?$/i.test(a.path)) propsRef.current.onRunFile(a.path);
     });
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV, () => mdToggleRef.current());
     ed.addCommand(monaco.KeyCode.F8, () => {
@@ -1268,6 +1290,10 @@ export function EditorPane(props: {
         ? { label: "转到引用", key: "Shift+F12", run: () => void showPythonRefs(-1, -1) }
         : { label: "转到引用", key: "Shift+F12", disabled: langIsPy(activePath) && pyNoLsp, run: act("editor.action.goToReferences") },
       { label: "快速查看", run: act("editor.action.peekDefinition") },
+      // python 文件：不经 Agent、直接在终端运行当前文件
+      ...(langIsPy(activePath)
+        ? [{ label: "运行 Python 文件", key: "Ctrl+F5", run: () => activePath && props.onRunFile(activePath) }]
+        : []),
       "sep",
       { label: "重命名符号", key: "F2", disabled: pyNoLsp, run: act("editor.action.rename") },
       { label: "更改所有匹配项", key: "Ctrl+F2", disabled: !hasSel, run: act("editor.action.changeAll") },
@@ -1442,11 +1468,11 @@ export function EditorPane(props: {
   const lspChip =
     activePath && lspState && lspState.language === lspLanguageFor(activePath)
       ? lspState.status === "running"
-        ? { text: lspState.detail || "LSP", color: "#3fb950" }
+        ? { text: lspState.detail || "LSP", color: "#3fb950", detail: "" }
         : lspState.status === "starting"
-          ? { text: "LSP 启动中", color: "#7d8590" }
+          ? { text: "LSP 启动中", color: "#7d8590", detail: "" }
           : lspState.status === "error"
-            ? { text: "LSP 不可用", color: "#d29922" }
+            ? { text: "LSP 不可用", color: "#d29922", detail: lspState.detail || "未找到语言服务器" }
             : null
       : null;
 
@@ -1489,11 +1515,27 @@ export function EditorPane(props: {
           </div>
         ))}
         <div style={{ flex: 1 }} />
-        {lspChip && (
-          <span className="ed-tool" style={{ border: "none", cursor: "default", color: lspChip.color }} title={`语言服务器：${lspChip.text}`}>
-            ◆ {lspChip.text}
-          </span>
-        )}
+        {lspChip &&
+          (lspState?.status === "error" ? (
+            // 不可用 = 没找到该语言的语言服务器（补全/悬停/重命名/格式化退回内建兜底）。
+            // 点击一键安装 python-lsp-server：VS Code「装个插件就好」的体验
+            <button
+              className="ed-tool"
+              style={{ border: "none", cursor: "pointer", color: lspChip.color }}
+              title={`语言服务器不可用：${lspChip.detail}\n点击在终端安装 python-lsp-server，装完重新点开文件即可（角标消失 = 生效）`}
+              onClick={props.onLspInstall}
+            >
+              ◆ {lspChip.text}
+            </button>
+          ) : (
+            <span
+              className="ed-tool"
+              style={{ border: "none", cursor: "default", color: lspChip.color }}
+              title={`语言服务器：${lspChip.text}${lspChip.detail ? `（${lspChip.detail}）` : ""}`}
+            >
+              ◆ {lspChip.text}
+            </span>
+          ))}
         {props.active.kind === "file" && activePath && isMd && (
           <div className="md-modes" title="Markdown 视图（Ctrl+Shift+V 循环切换）">
             {(["edit", "split", "wysiwyg"] as const).map((m) => (
@@ -1507,6 +1549,15 @@ export function EditorPane(props: {
               </button>
             ))}
           </div>
+        )}
+        {props.active.kind === "file" && activePath && langIsPy(activePath) && (
+          <button
+            className="ed-tool"
+            title="在终端运行此 Python 文件（Ctrl+F5）"
+            onClick={() => props.onRunFile(activePath)}
+          >
+            <Icon name="play" size={11} /> 运行
+          </button>
         )}
         {props.active.kind === "file" && activePath && (
           <>

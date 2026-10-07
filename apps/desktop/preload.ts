@@ -22,4 +22,6 @@ contextBridge.exposeInMainWorld("myharness", {
   termOnExit: (cb: (id: number, exitCode: number) => void): void => {
     ipcRenderer.on("term-exit", (_e, id: number, code: number) => cb(id, code));
   },
+  // Python 解释器（工作区 .venv 优先）：运行文件/安装语言服务器的命令用它拼
+  pyCmd: (): Promise<string> => ipcRenderer.invoke("py-cmd"),
 });

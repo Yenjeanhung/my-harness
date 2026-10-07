@@ -579,6 +579,7 @@
       .git-commit {
         background: #1f6feb; border: none; border-radius: 6px; color: #fff;
         padding: 6px 0; font-size: 12.5px; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
       }
       .git-commit:hover:not(:disabled) { background: #388bfd; }
       .git-commit:disabled { opacity: 0.45; cursor: default; }
@@ -588,7 +589,12 @@
       .git-commit-alt {
         flex: none; width: 34px; display: flex; align-items: center; justify-content: center;
         background: #1f6feb; border: none; border-left: 1px solid #0d1017; border-radius: 0 6px 6px 0;
-        color: #fff; cursor: pointer; padding: 0;
+        color: #fff; cursor: pointer; padding: 0; white-space: nowrap;
+      }
+      /* 推送进行中：主按钮让位，推送按钮扩成整行「⟳ 推送中…」 */
+      .git-commit-row.pushing .git-commit { display: none; }
+      .git-commit-row.pushing .git-commit-alt {
+        flex: 1; width: auto; border-left: none; border-radius: 6px; gap: 6px;
       }
       .git-commit-alt:hover:not(:disabled) { background: #388bfd; }
       .git-commit-alt:disabled { opacity: 0.45; cursor: default; }

@@ -291,10 +291,22 @@ import_electron.ipcMain.handle("term-create", async (_e, cols, rows) => {
     return { error: `\u7EC8\u7AEF\u542F\u52A8\u5931\u8D25: ${err instanceof Error ? err.message : String(err)}` };
   }
   ptys.set(id, pty);
-  pty.onData((d) => win?.webContents.send("term-data", id, d));
+  pty.onData((d) => {
+    if (win && !win.isDestroyed()) {
+      try {
+        win.webContents.send("term-data", id, d);
+      } catch {
+      }
+    }
+  });
   pty.onExit(({ exitCode }) => {
     ptys.delete(id);
-    win?.webContents.send("term-exit", id, exitCode);
+    if (win && !win.isDestroyed()) {
+      try {
+        win.webContents.send("term-exit", id, exitCode);
+      } catch {
+      }
+    }
   });
   return { id, cwd, title: import_path.default.basename(cwd) || "\u7EC8\u7AEF" };
 });
@@ -316,6 +328,12 @@ import_electron.ipcMain.on("term-kill", (_e, id) => {
     }
     ptys.delete(id);
   }
+});
+import_electron.ipcMain.handle("py-cmd", () => {
+  const ws = currentWorkspace();
+  const sub = process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"];
+  const p = import_path.default.join(ws, ...sub);
+  return import_fs.default.existsSync(p) ? p : "python";
 });
 function rendererUrl(query) {
   const qs = new URLSearchParams(query).toString();
@@ -366,7 +384,7 @@ import_electron.app.whenReady().then(async () => {
       saveProjects(st);
       terminalWorkspace = p;
     }
-    const state = same && await serverMatches(p) ? "attached" : await restartServerWithWorkspace(p);
+    const state = await serverMatches(p) ? "attached" : await restartServerWithWorkspace(p);
     try {
       await win?.loadURL(rendererUrl({ ws: WS_URL, server: state, root: p }));
     } catch {

@@ -6,7 +6,7 @@ import type * as React from "react";
 import { createRoot } from "react-dom/client";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { Icon, ThinkRow, TerminalPanel, FileTypeBadge, type IconName } from "./icons";
+import { Icon, ThinkRow, TerminalPanel, FileTypeBadge, runInTerminal, type IconName } from "./icons";
 import { FileTree, EditorPane } from "./workbench";
 import type { FileDoc } from "./workbench";
 import { setSocket } from "./ws";
@@ -960,6 +960,10 @@ function App() {
           // 编辑器 LSP 桥：状态/服务端消息转给 lsp.ts（内置 LSP 客户端 + 自有 definition 请求都从这里喂）
           lsp.handleDaemonEvent(e);
           break;
+        case "WorkspaceSet":
+          // 工作区热切换完成（SetWorkspace 的应答）：switchProject 里的 waiter 收到后走 openProject 重开页面
+          window.dispatchEvent(new CustomEvent("wb-workspace", { detail: { ok: e.ok, workspace: e.workspace } }));
+          break;
         case "ReasoningDelta":
           fullReasonRef.current += e.text;
           reasonRef.current = (reasonRef.current + e.text).slice(-400);
@@ -1637,17 +1641,37 @@ function App() {
   };
 
   // —— 项目（工作区）——
-  // 切项目 = 主进程带 --workspace 重启 daemon，完成后 loadFile 重开页面；这里只做确认、反馈与触发
+  // 切项目两段式：先向 daemon 发 SetWorkspace 进程内热切换（秒级，不重启进程、不断 WS），
+  // ack 后调 openProject → 主进程看 /health 已指向新工作区，只重开页面不再重启。
+  // 老 daemon（不认识该命令）或断连时等不到 ack → 直接走 openProject，主进程重启兜底。
   const [switching, setSwitching] = useState(false);
+  const hotSwitch = (p: string) =>
+    new Promise<boolean>((resolve) => {
+      const onAck = (ev: Event) => {
+        cleanup();
+        resolve(!!((ev as CustomEvent).detail as { ok?: boolean } | undefined)?.ok);
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, 8000);
+      const cleanup = () => {
+        clearTimeout(timer);
+        window.removeEventListener("wb-workspace", onAck);
+      };
+      window.addEventListener("wb-workspace", onAck);
+      sendCmd({ type: "SetWorkspace", path: p });
+    });
   const switchProject = async (p: string) => {
     if (runningRef.current && !confirm("当前任务运行中，切换项目会中断它。继续切换？")) return;
-    setSwitching(true); // daemon 重启期间连接会断开：遮罩提示，页面随后被主进程重开
+    setSwitching(true); // 切换期间主进程会重开页面：遮罩提示（热切换通常一闪而过）
     try {
+      if (p !== projects.current && connRef.current === "open") await hotSwitch(p);
       const r = await window.myharness?.openProject?.(p);
       setSwitching(false);
       if (r === "invalid") addItem({ kind: "error", text: `打开项目失败：目录无效（${p}）` });
       else if (r === "unavailable")
-        addItem({ kind: "error", text: "daemon 重启失败：请确认 harness 在 PATH 中，或重新打包内嵌 sidecar。" });
+        addItem({ kind: "error", text: "daemon 未就绪：请确认 harness 在 PATH 中，或重新打包内嵌 sidecar。" });
     } catch {
       setSwitching(false); // 页面重开竞态下 promise 被打断属正常
     }
@@ -1655,6 +1679,32 @@ function App() {
   const pickProject = async () => {
     const p = await window.myharness?.pickFolder?.();
     if (p) switchProject(p);
+  };
+
+  // —— 内嵌终端联动：运行 Python 文件 / 一键安装语言服务器（仅桌面端；命令进可见终端，过程可见）——
+  // 解释器由主进程解析（工作区 .venv 优先），终端 cwd=当前项目，相对路径直接可跑
+  const pyCmd = async (): Promise<string> => {
+    try {
+      return (await window.myharness?.pyCmd?.()) || "python";
+    } catch {
+      return "python";
+    }
+  };
+  const shellQuote = (cmd: string) => (cmd.includes(" ") ? `"${cmd}"` : cmd);
+  const termRun = (cmd: string) => {
+    setTermOpen(true);
+    runInTerminal(cmd);
+  };
+  const runPyFile = async (rel: string) => {
+    if (!window.myharness) return;
+    termRun(`${shellQuote(await pyCmd())} -u "${rel}"`);
+  };
+  const installPythonLsp = async () => {
+    if (!window.myharness) {
+      alert("仅桌面端支持一键安装：请在终端执行 pip install python-lsp-server");
+      return;
+    }
+    termRun(`${shellQuote(await pyCmd())} -m pip install -U python-lsp-server`);
   };
   // 项目列表：项目子面板打开时拉取；文件模式顶栏的当前项目名也依赖它
   useEffect(() => {
@@ -2251,13 +2301,13 @@ function App() {
             onOpen={openFile}
             onDiff={openDiff}
             onRefresh={refreshFiles}
-            onCollapse={() => setSidebarOpen(false)}
             onStage={(path) => sendCmd({ type: "GitStage", path })}
             onStageAll={() => sendCmd({ type: "GitStageAll" })}
             onUnstage={(path) => sendCmd({ type: "GitUnstage", path })}
             onCommit={(message, all, push) => sendCmd({ type: "GitCommit", message, all, push })}
             onPush={() => sendCmd({ type: "GitPush" })}
             onGenMsg={() => sendCmd({ type: "GitGenMsg" })}
+            onRunFile={runPyFile}
           />
         )}
         {sideTab === "sessions" && (
@@ -2316,7 +2366,7 @@ function App() {
               </div>
             ))}
             <div className="proj-hint">
-              切换项目会重启本地 daemon。每个项目有独立的记忆库与 AGENT.md；会话仍全局保留。
+              切换项目在 daemon 进程内完成（无需重启，秒级生效）。每个项目有独立的记忆库与 AGENT.md；会话仍全局保留。
             </div>
           </div>
         )}
@@ -2663,6 +2713,8 @@ function App() {
               onAiAction={aiAction}
               onAddRef={addChatRef}
               onJump={openFile}
+              onRunFile={runPyFile}
+              onLspInstall={installPythonLsp}
               onConflictReload={() => {
                 if (conflict) {
                   pendingReload.current.add(conflict);
@@ -3270,8 +3322,8 @@ function App() {
         <div className="switching-mask">
           <div className="switching-card">
             <div className="spin big" />
-            <div>正在切换项目 · daemon 重启中…</div>
-            <div className="meta">通常需要 5–20 秒（sidecar 冷启动），完成后自动重连</div>
+            <div>正在切换项目…</div>
+            <div className="meta">daemon 进程内热切换，通常 1 秒内完成；冷启动兜底时最长约 20 秒</div>
           </div>
         </div>
       )}

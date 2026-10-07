@@ -19,10 +19,10 @@
 ### 会话生命周期
 | 命令 | 字段 | 回复事件 |
 |---|---|---|
-| `CreateSession` | — | `SessionCreated` |
+| `CreateSession` | `origin?`（`chat`=会话模式 / `code`=代码模式，缺省 `chat`；决定会话归属池，两池列表互不可见） | `SessionCreated` |
 | `ResumeSession` | `session_id` | `SessionResumed` + `History`（回放历史条目，user/assistant 带 `seq`）+ `SessionCost` |
 | `ForkSession` | `session_id`, `upto_seq?`（截到该事件序号，缺省=全量复制） | `Notice` + `SessionList` + `SessionResumed` + `History`（新会话）。复制上下文事件为「Fork of <原标题>」新会话；不复制 run_finished（统计不重复计数）；截在带工具调用的助手消息上时自动补齐其后的 tool_results |
-| `ListSessions` | — | `SessionList`（含 `groups`） |
+| `ListSessions` | — | `SessionList`（含 `groups`；`sessions`/`chat`=会话模式池，`code`=代码模式池，按 `origin` 分池互不可见，老会话无标归 `chat`） |
 | `SendMessage` | `session_id`, `text`, `images[]?`(`{media_type,data}` base64) | `RunStarted` → `TokenDelta`/`ToolCallArgs`/`ToolCallStarted`/`ToolCallOutput`/`ToolCallResult`/`Notice`… → `RunFinished` |
 | `CancelRun` | `session_id` | `Notice`（run cancelled） |
 | `DeleteSession` | `session_id` | `Notice` + `SessionList`（物理删除事件行+JSONL；正在跑的先取消） |

@@ -6,7 +6,7 @@ import type * as React from "react";
 import { createRoot } from "react-dom/client";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { Icon, ThinkRow, TerminalPanel, type IconName } from "./icons";
+import { Icon, ThinkRow, TerminalPanel, FileTypeBadge, type IconName } from "./icons";
 import { FileTree, EditorPane } from "./workbench";
 import type { FileDoc } from "./workbench";
 import { setSocket } from "./ws";
@@ -395,6 +395,8 @@ function App() {
   const [permission, setPermission] = useState<PermissionRequest | null>(null); // 审批请求
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [sessionGroups, setSessionGroups] = useState<string[]>([]);
+  // 代码模式历史面板专用的会话池（与左侧栏 chat 池互不可见，服务端按 origin 分）
+  const [sessionsCode, setSessionsCode] = useState<SessionInfo[]>([]);
   const [showGroupInput, setShowGroupInput] = useState(false);
   const [groupInput, setGroupInput] = useState("");
   const [groupRenaming, setGroupRenaming] = useState<{ old: string; value: string } | null>(null);
@@ -430,10 +432,18 @@ function App() {
   const [thinking, setThinking] = useState<ThinkLevel>("off");
   const [attachments, setAttachments] = useState<Attachment[]>([]); // 文本附件
   const [pasteImages, setPasteImages] = useState<PasteImage[]>([]);
+  // 输入框引用芯片（CodeBuddy 式）：编辑器右键「添加到对话」进这里，独立卡片行展示，
+  // 发送时 composeMessage 展开成与内联 token 相同的 [引用] 代码块，气泡侧解析不变
+  const [chatRefs, setChatRefs] = useState<{ path: string; from: number; to: number }[]>([]);
   // 输入框镜像层：@path:from-to 引用 token 在底下垫成卡片（CodeBuddy 式）。镜像文本透明只留底色，
   // 与 textarea 同字体/行高/内边距，宽度跟随 clientWidth（滚动条出现时内容宽一致），滚动同步。
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const mirrorRef = useRef<HTMLDivElement | null>(null);
+  // 输入框手动高度（composer 顶边拖拽条设置；null = 随内容自动伸缩），localStorage 记住
+  const [composerH, setComposerH] = useState<number | null>(() => {
+    const v = parseInt(localStorage.getItem("yh.composerH") || "", 10);
+    return Number.isFinite(v) && v >= 44 ? v : null;
+  });
   const [showAttach, setShowAttach] = useState(false);
   const [attachPath, setAttachPath] = useState("");
   const [running, setRunning] = useState(false);
@@ -446,6 +456,13 @@ function App() {
   // —— 工作台（IDE，见 IDE-DESIGN.md）——
   // editorOpen=false 即「对话模式」：编辑器让位、对话占满主区（actbar 会话键切换）
   const [editorOpen, setEditorOpen] = useState(false); // 默认会话模式（ZCode 式大对话）；代码模式点活动栏「资源管理器」等进入
+  // 编辑器是否已挂载过：首次进代码模式才挂 EditorPane，之后隐藏不卸载——
+  // monaco 实例重建要几百毫秒且丢模型/视图状态，是「每次切代码模式都卡一下」的另一半原因
+  const [editorMounted, setEditorMounted] = useState(false);
+  const openEditor = () => {
+    setEditorOpen(true);
+    setEditorMounted(true);
+  };
   const [chatW, setChatW] = useState(400); // 对话栏宽度（CodeBuddy/Trae 式窄栏，编辑器占主区）
   const [chatHidden, setChatHidden] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -678,6 +695,7 @@ function App() {
           setPermission(null); // 换会话不带审批卡片
           setAttachments([]);
           setPasteImages([]);
+          setChatRefs([]);
           assistantBuf.current = null;
           setRunning(false);
           setSessCost(null);
@@ -698,6 +716,7 @@ function App() {
           setPermission(null);
           setAttachments([]);
           setPasteImages([]);
+          setChatRefs([]);
           assistantBuf.current = null;
           setRunning(false);
           setSessCost(null);
@@ -714,22 +733,23 @@ function App() {
           setContentResults(e.results || []);
           break;
         case "SessionList":
-          setSessions(e.sessions || []);
+          setSessions(e.chat || e.sessions || []); // 会话模式左栏池
+          setSessionsCode(e.code || []); // 代码模式历史面板池（两池互不可见）
           setSessionGroups(e.groups || []);
           if (!pickedInitial.current) {
             pickedInitial.current = true;
-            const list = e.sessions || [];
+            const list = e.chat || e.sessions || [];
             if (list.length) {
               // 打开应用自动恢复最近一次会话（ZCode 行为），历史由 History 事件回放
               resume(list[0].session_id);
             } else {
-              newSession();
+              newSession("chat");
             }
-          } else if (sessionIdRef.current && !(e.sessions || []).some((s) => s.session_id === sessionIdRef.current)) {
+          } else if (sessionIdRef.current && !(e.chat || e.sessions || []).some((s) => s.session_id === sessionIdRef.current)) {
             // 当前会话被删除：自动回落到最近会话或新建
-            const list = e.sessions || [];
+            const list = e.chat || e.sessions || [];
             if (list.length) resume(list[0].session_id);
-            else newSession();
+            else newSession("chat");
           }
           break;
         case "History":
@@ -921,9 +941,10 @@ function App() {
         case "GitDone":
           // stage/unstage/commit/push 结果：服务端已自动回发 GitStatus；失败/成功都提示到对话流
           if (!e.ok) addItem({ kind: "error", text: `Git ${e.op} 失败：${e.message}` });
-          else if (e.op === "commit")
+          else if (e.op === "commit") {
             addItem({ kind: "notice", text: `已提交：${(e.message || "").split("\n")[0]}` });
-          else if (e.op === "push") {
+            window.dispatchEvent(new CustomEvent("wb-commitdone", { detail: { ok: e.ok } })); // SCM 面板提交段复位
+          } else if (e.op === "push") {
             window.dispatchEvent(new CustomEvent("wb-pushdone", { detail: { ok: e.ok } })); // SCM 面板按钮复位
             addItem({ kind: "notice", text: e.ok ? `已推送到远程：${(e.message || "").split("\n")[0]}` : `Git push 失败：${e.message}` });
           }
@@ -1224,22 +1245,30 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, section, conn]);
 
-  // 发送时把输入框里的内联引用 token（@path:from-to）就地展开成代码块——
-  // 引用长在句子里，多段代码按用户排布的顺序原位展开，不会全部堆到消息末尾
+  // 发送时的 [引用] 代码块展开：输入框芯片与手敲内联 token（@path:from-to）共用同一协议，
+  // 代码体从编辑器缓冲（fileDocs）取，文件未打开就交给 Agent 自行 read_file
+  const refBlock = (p: string, f: number | string, t: number | string): string => {
+    const d = fileDocs.current[p];
+    let body = "";
+    if (d && d.text) {
+      const lines = d.text.split("\n");
+      const seg = lines.slice(Math.max(0, +f - 1), +t).join("\n");
+      body = seg.length > 4000 ? seg.slice(0, 4000) + "\n...(truncated)" : seg;
+    }
+    return (
+      `[引用] ${p}:${f}-${t}` +
+      (body ? `:\n\`\`\`\n${body}\n\`\`\`` : "（文件未在编辑器打开，请先用 read_file 读取该范围）")
+    );
+  };
+
+  // 组装发送文本：句内 @path:from-to token 原位展开（引用长在句子里，多段按用户排布的顺序），
+  // 引用芯片统一追加在正文之后（CodeBuddy 式：引用不占正文，正文保持干净）
   const composeMessage = (text: string): string => {
-    let out = text.replace(/@([^\s@:，。；、]+?):(\d+)-(\d+)/g, (_m, p: string, f: string, t: string) => {
-      const d = fileDocs.current[p];
-      let body = "";
-      if (d && d.text) {
-        const lines = d.text.split("\n");
-        const seg = lines.slice(Math.max(0, +f - 1), +t).join("\n");
-        body = seg.length > 4000 ? seg.slice(0, 4000) + "\n...(truncated)" : seg;
-      }
-      return (
-        `[引用] ${p}:${f}-${t}` +
-        (body ? `:\n\`\`\`\n${body}\n\`\`\`` : "（文件未在编辑器打开，请先用 read_file 读取该范围）")
-      );
-    });
+    let out = text.replace(/@([^\s@:，。；、]+?):(\d+)-(\d+)/g, (_m, p: string, f: string, t: string) => refBlock(p, f, t));
+    for (const r of chatRefs) {
+      if (text.includes(`@${r.path}:${r.from}-${r.to}`)) continue; // 手敲过相同 token 的芯片不重复贴
+      out += `\n${refBlock(r.path, r.from, r.to)}`;
+    }
     if (!attachments.length) return out;
     const blocks = attachments
       .map((a) => `--- 附件文件: ${a.path}${a.truncated ? "（已截断）" : ""} ---\n${a.content}`)
@@ -1294,18 +1323,23 @@ function App() {
     // 末尾补零宽空格：pre-wrap 下纯换行尾不会塌掉最后一行行高
     return esc.replace(INPUT_REF_TOKEN, (m) => `<span class="refpill">${m}</span>`) + "\u200b";
   };
-  // 自适应高度（上限 40% 视口）+ 镜像层滚动/宽度同步（textarea 出滚动条时两边内容宽必须一致，换行才不错位）
+  // 自适应高度（自动态上限 40% 视口；手动拖拽过则用固定高度，内容超出走 textarea 内滚动）
+  // + 镜像层滚动/宽度同步（textarea 出滚动条时两边内容宽必须一致，换行才不错位）
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
+    if (composerH != null) {
+      ta.style.height = `${composerH}px`;
+    } else {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
+    }
     const m = mirrorRef.current;
     if (m) {
       m.scrollTop = ta.scrollTop;
       m.style.width = `${ta.clientWidth}px`;
     }
-  }, [input, conn]);
+  }, [input, conn, composerH]);
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta || typeof ResizeObserver === "undefined") return;
@@ -1353,6 +1387,7 @@ function App() {
     setInput("");
     setAttachments([]);
     setPasteImages([]);
+    setChatRefs([]);
   };
 
   // —— 回答中的代码引用可点击：path:114 / path:114-120 / 第 114-120 行 → 打开对应文件跳行 ——
@@ -1502,34 +1537,23 @@ function App() {
     sendNow(prompt, prompt, []);
   };
 
-  // 编辑器选区 → 在输入框光标处插入内联引用 token（CodeBuddy 式：引用长在句子里，可多段穿插）。
-  // 发送时 composeMessage 就地把 @path:from-to 展开成代码块；文件未打开也接受，Agent 发送时自行 read_file
+  // 编辑器选区 / md 预览「发送到对话」→ 添加引用芯片（CodeBuddy 式：输入框下方独立卡片，
+  // 文件名:行段 可单独删）。发送时 composeMessage 展开成代码块；文件未打开也接受
   const addChatRef = (path: string, from: number, to: number) => {
     const norm = path.replace(/\\/g, "/");
-    const token = `@${norm}:${from}-${to}`;
-    const el = document.getElementById("input") as HTMLTextAreaElement | null;
-    if (el) {
-      const s = el.selectionStart ?? el.value.length;
-      const e = el.selectionEnd ?? s;
-      const before = el.value.slice(0, s);
-      const after = el.value.slice(e);
-      const pad = before && !/\s$/.test(before) ? " " : "";
-      setInput(`${before}${pad}${token} ${after}`);
-      const pos = (before + pad + token + " ").length;
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(pos, pos);
-      }, 30);
-    } else {
-      setInput((prev) => (prev ? `${prev} ${token}` : token));
-    }
-    setChatHidden(false); // 引用在对话栏输入框里，收起时自动展开
+    setChatRefs((prev) =>
+      prev.some((r) => r.path === norm && r.from === from && r.to === to) ? prev : [...prev, { path: norm, from, to }]
+    );
+    setChatHidden(false); // 芯片在对话栏输入框里，收起时自动展开
+    setTimeout(() => document.getElementById("input")?.focus(), 30);
   };
 
   const refreshFiles = () => {
     setFilesRefresh((n) => n + 1);
-    sendCmd({ type: "GitStatus" });
+    // ListDir 必须先于 GitStatus：daemon 按到达顺序串行处理，git status 子进程慢
+    //（大未跟踪目录时秒级），排前面会把目录列表一起拖住——文件树长时间「加载中」的根因
     sendCmd({ type: "ListDir", path: "" });
+    sendCmd({ type: "GitStatus" });
   };
   // 工具卡片点击跳转：读→打开文件（offset 行），写→打开 diff
   const toolJump = (it: { tool: string; args?: string }) => {
@@ -1602,10 +1626,10 @@ function App() {
     else setShowAttach(false);
   };
 
-  const newSession = () => {
+  const newSession = (origin: "chat" | "code" = "chat") => {
     if (connRef.current !== "open") return;
     setView("chat");
-    sendCmd({ type: "CreateSession" });
+    sendCmd({ type: "CreateSession", origin });
   };
   const resume = (id: string) => {
     setView("chat");
@@ -2046,7 +2070,7 @@ function App() {
       return;
     }
     // 代码类视图：总是回到代码模式
-    setEditorOpen(true);
+    openEditor();
     if (sidebarOpen && sideTab === "files" && codeMode === target) {
       setSidebarOpen(false);
       return;
@@ -2061,7 +2085,7 @@ function App() {
   // 编辑器相关项经 wb-edit 事件桥进 EditorPane（workbench.tsx）；monaco action id 与右键菜单同一套。
   const edCmd = (action: string) => () => window.dispatchEvent(new CustomEvent("wb-edit", { detail: { action } }));
   const menuNewFile = () => {
-    setEditorOpen(true);
+    openEditor();
     setSideTab("files");
     setCodeMode("tree");
     setSidebarOpen(true);
@@ -2189,7 +2213,7 @@ function App() {
       {sidebarOpen && (
       <aside>
         {sideTab === "sessions" && (
-          <button className="newbtn" onClick={newSession} disabled={conn !== "open"}>＋ 新建会话</button>
+          <button className="newbtn" onClick={() => newSession("chat")} disabled={conn !== "open"}>＋ 新建会话</button>
         )}
         {sideTab === "files" && (
           <div
@@ -2615,9 +2639,10 @@ function App() {
       )}
       <div className="ide">
         <div className={"ide-body" + (!editorOpen ? " chatmode" : "")}>
-      {editorOpen && (
+      {/* 首次进代码模式挂载后常驻：会话模式只隐藏不卸载（monaco 重建要几百毫秒且丢状态） */}
+      {editorMounted && (
         <>
-          <div className="editor-col">
+          <div className="editor-col" style={editorOpen ? undefined : { display: "none" }}>
             <EditorPane
               tabs={openFiles}
               diffTabs={diffTabsRef.current}
@@ -2658,6 +2683,7 @@ function App() {
           </div>
           <div
             className="col-splitter"
+            style={editorOpen ? undefined : { display: "none" }}
             onMouseDown={(e) => {
               chatDrag.current = { startX: e.clientX, startW: chatW };
               e.preventDefault();
@@ -2684,7 +2710,7 @@ function App() {
           {/* 头部按钮是代码模式专属：历史/搜索打开覆盖在对话区上的「历史对话」面板（CodeBuddy 式），不动左侧文件栏 */}
           {fileMode && (
             <>
-              <button className="head-ic" title="新建会话" onClick={newSession}>
+              <button className="head-ic" title="新建会话" onClick={() => newSession("code")}>
                 <Icon name="plus" size={14} />
               </button>
               <button
@@ -2728,10 +2754,12 @@ function App() {
             <div className="hist-list">
               {(() => {
                 const q = histQ.trim().toLowerCase();
+                // 只列代码模式池（origin=code）：与会话模式左栏（chat 池）互不可见
                 const filtered = q
-                  ? (sessions || []).filter((s) => (s.title || "").toLowerCase().includes(q) || s.session_id.includes(q))
-                  : sessions || [];
+                  ? (sessionsCode || []).filter((s) => (s.title || "").toLowerCase().includes(q) || s.session_id.includes(q))
+                  : sessionsCode || [];
                 if (q && !filtered.length) return <div className="hist-empty">无匹配会话</div>;
+                if (!filtered.length) return <div className="hist-empty">还没有历史会话（从这里新建的会话会归到这里）</div>;
                 return groupSessions(filtered).map((g) => (
                   <div key={g.key}>
                     <div className="hist-ghead">
@@ -2891,7 +2919,7 @@ function App() {
                             title={`${r.path}:${r.from}-${r.to}（已随消息发给模型），点击跳转`}
                             onClick={() => openFile(r.path, r.from)}
                           >
-                            <Icon name="file" size={11} /> {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
+                            <FileTypeBadge path={r.path} /> {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
                           </span>
                         ))}
                       </div>
@@ -3057,12 +3085,59 @@ function App() {
           );
         })()}
         <div className="composer">
+          {/* 顶边拖拽条：上下拖动调输入框高度（会话/代码模式通用），双击恢复自动伸缩 */}
+          <div
+            className="composer-resize"
+            title="拖拽调整输入框高度，双击恢复自动"
+            onDoubleClick={() => {
+              setComposerH(null);
+              localStorage.removeItem("yh.composerH");
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              const el = e.currentTarget;
+              const startY = e.clientY;
+              const startH = inputRef.current?.getBoundingClientRect().height ?? 0;
+              const clampH = (v: number) => Math.round(Math.min(Math.max(v, 44), window.innerHeight * 0.7));
+              let h = startH;
+              el.setPointerCapture(e.pointerId);
+              document.body.classList.add("composer-resizing");
+              const onMove = (ev: PointerEvent) => {
+                h = clampH(startH + (startY - ev.clientY));
+                setComposerH(h);
+              };
+              const onUp = () => {
+                el.removeEventListener("pointermove", onMove);
+                el.removeEventListener("pointerup", onUp);
+                el.removeEventListener("lostpointercapture", onUp);
+                document.body.classList.remove("composer-resizing");
+                localStorage.setItem("yh.composerH", String(h));
+              };
+              el.addEventListener("pointermove", onMove);
+              el.addEventListener("pointerup", onUp);
+              el.addEventListener("lostpointercapture", onUp);
+            }}
+          />
           {pasteImages.length > 0 && (
             <div className="atchips">
               {pasteImages.map((p, i) => (
                 <span key={i} className="chip imgchip">
                   <img src={`data:${p.media_type};base64,${p.data}`} alt="paste" />
                   <span className="chipx" onClick={() => setPasteImages((prev) => prev.filter((_, j) => j !== i))}>×</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {chatRefs.length > 0 && (
+            <div className="atchips">
+              {chatRefs.map((r, i) => (
+                <span
+                  key={`${r.path}:${r.from}-${r.to}`}
+                  className="chip refchip"
+                  title={`${r.path}:${r.from}-${r.to}（发送时随消息展开为代码块）`}
+                >
+                  <FileTypeBadge path={r.path} /> {r.path.split(/[\\/]/).pop()}:{r.from}-{r.to}
+                  <span className="chipx" onClick={() => setChatRefs((prev) => prev.filter((_, j) => j !== i))}>×</span>
                 </span>
               ))}
             </div>

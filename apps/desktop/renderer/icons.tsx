@@ -440,3 +440,59 @@ export function Icon({ name, size = 13, filled = false }: { name: IconName; size
     </svg>
   );
 }
+
+// —— 文件类型徽标：按扩展名给 monogram + 类型色（CodeBuddy「JS」徽标式，扁平方角小片）。
+// 引用芯片（输入框/气泡）等处用；未登记的扩展名退回通用 file 图标
+const FILE_TYPE_META: Record<string, { label: string; color: string }> = {
+  md: { label: "M", color: "#4493f8" },
+  mdx: { label: "M", color: "#4493f8" },
+  txt: { label: "T", color: "#8b949e" },
+  js: { label: "JS", color: "#e3b341" },
+  mjs: { label: "JS", color: "#e3b341" },
+  cjs: { label: "JS", color: "#e3b341" },
+  jsx: { label: "JSX", color: "#e3b341" },
+  ts: { label: "TS", color: "#4493f8" },
+  tsx: { label: "TSX", color: "#4493f8" },
+  py: { label: "PY", color: "#3fb950" },
+  json: { label: "{}", color: "#e3b341" },
+  toml: { label: "TM", color: "#8b949e" },
+  yaml: { label: "Y", color: "#e3b341" },
+  yml: { label: "Y", color: "#e3b341" },
+  html: { label: "<>", color: "#f0883e" },
+  htm: { label: "<>", color: "#f0883e" },
+  css: { label: "#", color: "#4493f8" },
+  scss: { label: "#", color: "#f0883e" },
+  less: { label: "#", color: "#4493f8" },
+  doc: { label: "W", color: "#4493f8" },
+  docx: { label: "W", color: "#4493f8" },
+  xls: { label: "X", color: "#3fb950" },
+  xlsx: { label: "X", color: "#3fb950" },
+  ppt: { label: "P", color: "#f0883e" },
+  pptx: { label: "P", color: "#f0883e" },
+  pdf: { label: "PDF", color: "#f85149" },
+  csv: { label: "CSV", color: "#3fb950" },
+  sql: { label: "SQL", color: "#e3b341" },
+  sh: { label: "$", color: "#3fb950" },
+  bat: { label: "$", color: "#3fb950" },
+  ps1: { label: "$", color: "#4493f8" },
+  rs: { label: "RS", color: "#f0883e" },
+  go: { label: "GO", color: "#4493f8" },
+  c: { label: "C", color: "#4493f8" },
+  h: { label: "H", color: "#8b949e" },
+  cpp: { label: "C++", color: "#4493f8" },
+  hpp: { label: "H+", color: "#4493f8" },
+  java: { label: "J", color: "#f0883e" },
+  rb: { label: "RB", color: "#f85149" },
+  zip: { label: "ZIP", color: "#8b949e" },
+};
+
+export function FileTypeBadge({ path }: { path: string }) {
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  const meta = FILE_TYPE_META[ext];
+  if (!meta) return <Icon name="file" size={12} />;
+  return (
+    <span className="ftbadge" style={{ color: meta.color, background: `${meta.color}26` }}>
+      {meta.label}
+    </span>
+  );
+}

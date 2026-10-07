@@ -19,6 +19,7 @@ export interface SessionInfo {
   events: number;
   pinned?: boolean;
   group?: string;
+  origin?: "chat" | "code"; // 归属池：会话模式左栏=chat，代码模式历史面板=code（老库缺省 chat）
 }
 
 export interface ContentResult {
@@ -126,7 +127,7 @@ export type WsEvent =
   | { type: "Pong" } // 心跳应答（渲染层 Ping → 服务端 Pong，看门狗用）
   | { type: "SessionCreated"; session_id: string; mode?: PermMode }
   | { type: "SessionResumed"; session_id: string }
-  | { type: "SessionList"; sessions?: SessionInfo[]; groups?: string[] }
+  | { type: "SessionList"; sessions?: SessionInfo[]; chat?: SessionInfo[]; code?: SessionInfo[]; groups?: string[] }
   | { type: "History"; items?: HistoryEntry[] }
   | { type: "ContentSearchResult"; results?: ContentResult[] }
   | ({ type: "Settings" } & SettingsState)
@@ -202,7 +203,7 @@ export type WsEvent =
 
 export type WsCommand =
   | { type: "Ping" } // 心跳（渲染层看门狗，服务端回 Pong）
-  | { type: "CreateSession" }
+  | { type: "CreateSession"; origin?: "chat" | "code" }
   | { type: "ResumeSession"; session_id: string }
   | { type: "ListSessions" }
   | { type: "SendMessage"; session_id?: string | null; text: string; images?: Img[] }

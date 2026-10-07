@@ -312,7 +312,9 @@ class ServerState:
         elif t == "SearchWorkspace":
             await self._search_ws(msg)
         elif t == "GitStatus":
-            await self._git_status()
+            # git status 子进程慢（大未跟踪目录时秒级）：放后台 task 立即返回，
+            # 不按到达顺序阻塞后续命令（ListDir 曾排在它后面让文件树长时间「加载中」）
+            asyncio.create_task(self._git_status()).add_done_callback(lambda t: t.exception())
         elif t == "GitStage":
             await self._git_stage(msg)
         elif t == "GitStageAll":
@@ -391,7 +393,7 @@ class ServerState:
             titles = {r["session_id"]: r["title"] for r in self.store.list_sessions()}
             results = [
                 {**r, "title": titles.get(r["session_id"], "")}
-                for r in self.store.search(q, limit=int(msg.get("limit", 20)))
+                for r in self.store.search(q, limit=int(msg.get("limit", 20)), origin="chat")
             ]
             self._notify({"type": "ContentSearchResult", "query": q, "results": results})
         elif t == "ExportSession":
@@ -497,7 +499,11 @@ class ServerState:
             self._notify({"type": "Error", "error": f"unknown message type: {t}"})
 
     async def _create_session(self, msg: dict) -> None:
-        await self._register_session(Session(self.store), created=True)
+        sess = Session(self.store)
+        await self._register_session(sess, created=True)
+        # 会话归属池（chat=会话模式 / code=代码模式）：由发起入口决定，列表互不可见
+        self.store.set_session_meta(sess.id, origin=msg.get("origin") or "chat")
+        self._session_list()
 
     async def _resume_session(self, msg: dict) -> None:
         sid = msg.get("session_id", "")
@@ -585,11 +591,14 @@ class ServerState:
         new_sess = Session(self.store)
         for e in selected:
             self.store.append(new_sess.id, e.type, e.payload)
-        src_title = next(
-            (s["title"] for s in self.store.list_sessions() if s["session_id"] == src_id), ""
-        )
+        src_title, src_origin = "", "chat"
+        for s in self.store.list_sessions():
+            if s["session_id"] == src_id:
+                src_title = s["title"] or ""
+                src_origin = s.get("origin") or "chat"
+                break
         title = f"Fork of {src_title or src_id[:8]}".strip()[:80]
-        self.store.set_session_meta(new_sess.id, title=title)
+        self.store.set_session_meta(new_sess.id, title=title, origin=src_origin)
         self._notify({"type": "Notice", "text": f"已创建分支会话：{title}"})
         self._session_list()
         await self._resume_session({"session_id": new_sess.id})
@@ -649,10 +658,16 @@ class ServerState:
         self._notify({"type": event, "session_id": sess.id, "mode": perms.mode})
 
     def _session_list(self) -> None:
+        # 双池推送：chat（会话模式左栏）与 code（代码模式历史面板）互不可见（origin 老库缺省=chat）
+        all_s = self.store.list_sessions()
+        chat = [s for s in all_s if (s.get("origin") or "chat") == "chat"][:200]
+        code = [s for s in all_s if s.get("origin") == "code"][:200]
         self._notify(
             {
                 "type": "SessionList",
-                "sessions": self.store.list_sessions()[:200],
+                "sessions": chat,  # 兼容旧客户端字段
+                "chat": chat,
+                "code": code,
                 "groups": self.settings.get("session_groups", []),
             }
         )

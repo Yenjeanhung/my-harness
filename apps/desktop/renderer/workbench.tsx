@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { monaco, markersOf, modelFor, getModel, lspLanguageFor, baseEditorOptions, fileUri, type RulerDiag } from "./monaco";
+import { createWysiwyg } from "./mdwysiwyg";
 import { ensureStartedForPath, isLspRunning, onLspStatus, requestLocations, type RefLocation } from "./lsp";
 import { Icon } from "./icons";
 import { mdRender } from "./md";
@@ -784,6 +785,25 @@ function GitPanel(props: {
   const { scm } = props;
   const ahead = scm.ahead || 0; // 未推送提交数：无可提交内容时该按钮退化为纯推送并显示计数
   const [genPending, setGenPending] = useState(false);
+  // 提交/推送进度态：点「提交并推送」= 全程占位（commit 段→push 段），按钮转圈 + 文案随阶段变化，
+  // 完成信号走 wb-commitdone / wb-pushdone（app.tsx 的 GitDone 转发）——此前无反馈被误认为「要点两下」
+  const [busy, setBusy] = useState<null | "commit" | "push">(null);
+  useEffect(() => {
+    const onPushDone = () => setBusy(null);
+    const onCommitDone = () => setBusy((b) => (b === "push" ? "push" : null)); // 提交并推送：提交完成仍处推送段
+    window.addEventListener("wb-pushdone", onPushDone);
+    window.addEventListener("wb-commitdone", onCommitDone);
+    return () => {
+      window.removeEventListener("wb-pushdone", onPushDone);
+      window.removeEventListener("wb-commitdone", onCommitDone);
+    };
+  }, []);
+  // 兜底复位：daemon 无响应时不永久卡死
+  useEffect(() => {
+    if (!busy) return;
+    const t = setTimeout(() => setBusy(null), busy === "push" ? 150000 : 45000);
+    return () => clearTimeout(t);
+  }, [busy]);
   // AI 生成的提交信息（app.tsx 转发的 wb-gitmsg 事件）→ 填进输入框
   useEffect(() => {
     const onMsg = (ev: Event) => {
@@ -864,20 +884,22 @@ function GitPanel(props: {
       <div className="git-commit-row">
         <button
           className="git-commit"
-          disabled={!canCommit}
+          disabled={busy !== null || !canCommit}
           title={staged.length === 0 ? "无暂存内容：提交全部更改（git commit -a）" : "提交暂存内容"}
           onClick={() => {
+            setBusy("commit");
             props.onCommit(props.msg.trim(), staged.length === 0, false);
             props.setMsg("");
           }}
         >
-          ✓ 提交{staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}
+          {busy === "commit" ? "提交中…" : busy === "push" ? "推送中…" : `✓ 提交${staged.length > 0 ? `（${staged.length}）` : changes.length > 0 ? "全部" : ""}`}
         </button>
         <button
           className="git-commit-alt push-wrap"
-          disabled={!canCommit && ahead === 0}
-          title={canCommit ? "提交并推送（commit + push）" : ahead > 0 ? `推送 ${ahead} 个未推送提交` : "提交并推送（commit + push）"}
+          disabled={busy !== null || (!canCommit && ahead === 0)}
+          title={busy ? (busy === "commit" ? "提交中…" : "推送中…") : canCommit ? "提交并推送（commit + push）" : ahead > 0 ? `推送 ${ahead} 个未推送提交` : "提交并推送（commit + push）"}
           onClick={() => {
+            setBusy("push");
             if (canCommit) {
               props.onCommit(props.msg.trim(), staged.length === 0, true);
               props.setMsg("");
@@ -886,8 +908,14 @@ function GitPanel(props: {
             }
           }}
         >
-          <Icon name="push" size={13} />
-          {!canCommit && ahead > 0 && <b className="push-badge">{ahead}</b>}
+          {busy ? (
+            <>
+              <span className="spin" /> {busy === "commit" ? "提交中" : "推送中"}
+            </>
+          ) : (
+            <Icon name="push" size={13} />
+          )}
+          {!busy && !canCommit && ahead > 0 && <b className="push-badge">{ahead}</b>}
         </button>
       </div>
       {scm.branch && <div className="git-branch">⑂ {scm.branch}</div>}
@@ -957,11 +985,21 @@ export function EditorPane(props: {
   const runAiRef = useRef<(kind: "explain" | "comment" | "refactor" | "fix" | "test" | "file-review") => void>(() => {});
   const addRefRef = useRef<() => void>(() => {});
   // md 预览：编辑/预览切换（仅 .md/.markdown tab 显示按钮）
-  const [mdPreview, setMdPreview] = useState(false);
+  // md 三态：编辑 / 分屏（左编辑右实时预览，可同时改）/ 纯预览。预览里选中文字可一键发送到对话。
+  type MdMode = "edit" | "split" | "wysiwyg"; // wysiwyg = 写作模式（Typora 式，渲染表面直接编辑）
+  const [mdMode, setMdMode] = useState<MdMode>("edit");
   const [mdTick, setMdTick] = useState(0);
-  const mdPreviewRef = useRef(false);
-  mdPreviewRef.current = mdPreview;
+  const mdLiveRef = useRef<MdMode>("edit");
+  mdLiveRef.current = mdMode;
   const mdToggleRef = useRef(() => {});
+  // 预览区选中 → 浮出「发送到对话」（相对 .ed-stage 定位）
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const [pvSel, setPvSel] = useState<null | { x: number; y: number; text: string }>(null);
+  // 写作模式（Typora 式 WYSIWYG）实例：输入即渲染，序列化回 monaco model（防抖）
+  const wysiwygHostRef = useRef<HTMLDivElement | null>(null);
+  const wysiwygRef = useRef<import("./mdwysiwyg").Wysiwyg | null>(null);
+  const wysiwygSeq = useRef(0);
   // LSP 状态 chip（python/pyright 等）
   const [lspState, setLspState] = useState<{ language: string; status: string; detail?: string } | null>(null);
   // 自绘右键菜单 + 引用面板（坐标为视口坐标，组件内部做贴边修正）
@@ -1133,7 +1171,7 @@ export function EditorPane(props: {
               propsRef.current.onDirty(activePath, text !== dd.saved);
             }
             setHasSelection(!!editorRef.current?.getSelection() && !editorRef.current!.getSelection()!.isEmpty());
-            if (mdPreviewRef.current) setMdTick((t) => t + 1);
+            if (mdLiveRef.current !== "edit") setMdTick((t) => t + 1);
             scheduleLint(activePath);
           }) }
       );
@@ -1145,7 +1183,7 @@ export function EditorPane(props: {
     const ds = markersOf(model.uri);
     diagsRef.current = ds;
     setDiags(ds);
-    if (!isDiff && !mdPreviewRef.current) ed.focus();
+    if (!isDiff && mdLiveRef.current === "edit") ed.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath, docVersion]);
 
@@ -1195,7 +1233,8 @@ export function EditorPane(props: {
     const selText = has ? model.getValueInRange(sel!) : model.getValue().slice(0, 8000);
     props.onAiAction(kind, p, selText, startLine, endLine);
   };
-  // 选区插入对话输入框（@path:行段 token 长在句子里），发送时 composeMessage 就地展开成代码块
+  // 选区添加为对话输入框的引用卡片（CodeBuddy 式：文件名:行段芯片，可单独删），
+  // 发送时 composeMessage 展开成 [引用] 代码块
   const addRef = () => {
     const ed = editorRef.current;
     const model = ed?.getModel();
@@ -1247,7 +1286,7 @@ export function EditorPane(props: {
       { label: "AI：修复问题（直接修改）", disabled: !hasSel, run: ai("fix") },
       { label: "AI：写单元测试", run: ai("test") },
       { label: "AI：审阅整个文件", run: ai("file-review") },
-      { label: "插入到对话（带行号引用）", disabled: !hasSel, run: () => addRefRef.current() },
+      { label: "添加到对话（引用卡片）", disabled: !hasSel, run: () => addRefRef.current() },
       "sep",
       { label: "命令面板…", key: "F1", run: act("editor.action.quickCommand") },
     ];
@@ -1314,7 +1353,88 @@ export function EditorPane(props: {
   jumpRef.current = jumpDiag;
   const isMd = !!activePath && /\.(md|markdown)$/i.test(activePath);
   mdToggleRef.current = () => {
-    if (isMd) setMdPreview((v) => !v);
+    if (!isMd) return;
+    setMdMode((m) => (m === "edit" ? "split" : m === "split" ? "wysiwyg" : "edit")); // Ctrl+Shift+V 循环三态
+  };
+  // 切到非 md 文件回到纯编辑；md 内容刷新后选区位置失效，清掉浮钮
+  useEffect(() => {
+    if (!isMd && mdMode !== "edit") setMdMode("edit");
+    setPvSel(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePath, isMd]);
+  useEffect(() => {
+    setPvSel(null);
+  }, [mdTick]);
+  // 写作模式生命周期：进入（或外部重载 docVersion 变化）时建实例；编辑防抖序列化回 model（脏判定/保存复用既有链路）
+  useEffect(() => {
+    if (mdMode !== "wysiwyg" || !isMd || !activePath || !wysiwygHostRef.current) {
+      if (wysiwygRef.current) {
+        wysiwygRef.current.destroy();
+        wysiwygRef.current = null;
+      }
+      return;
+    }
+    const seq = ++wysiwygSeq.current;
+    const model = editorRef.current?.getModel();
+    const initial = model?.getValue() ?? props.docs.current[activePath]?.text ?? "";
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    wysiwygRef.current = createWysiwyg(
+      wysiwygHostRef.current,
+      initial,
+      (md) => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (seq !== wysiwygSeq.current) return; // 期间已切走/重建：丢弃
+          const m = editorRef.current?.getModel();
+          if (m && m.getValue() !== md) m.setValue(md); // 触发 onDidChangeContent → 脏判定/onText
+        }, 600);
+      }
+    );
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (wysiwygRef.current) {
+        wysiwygRef.current.destroy();
+        wysiwygRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mdMode, isMd, activePath, docVersion]);
+  // 预览区选择结束：有选中 → 记录选区文本与浮钮位置（视口坐标，浮钮渲染时换算成 stage 内坐标）
+  const onPreviewSelect = () => {
+    const el = previewRef.current ?? wysiwygHostRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.isCollapsed || !el.contains(sel.anchorNode)) {
+      setPvSel(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text) {
+      setPvSel(null);
+      return;
+    }
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    const s = stageRef.current?.getBoundingClientRect();
+    setPvSel({ x: s ? r.left - s.left : r.left, y: s ? r.bottom - (s?.top ?? 0) + 6 : r.bottom, text });
+  };
+  // 发送预览选中内容：能在源文件里定位到就加引用卡片（发送时展开为代码块），定位不到退化为引用原文
+  const sendPreviewSel = () => {
+    if (!pvSel || !activePath) return;
+    const src = props.docs.current[activePath]?.text ?? "";
+    const raw = pvSel.text;
+    let probe = raw.length <= 400 ? src.indexOf(raw) : -1; // 短选区整段匹配（含换行结构）
+    if (probe < 0) {
+      const firstLine = raw.split("\n")[0].trim();
+      if (firstLine.length > 3) probe = src.indexOf(firstLine); // 长选区退回首行匹配
+    }
+    if (probe >= 0) {
+      const from = src.slice(0, probe).split("\n").length;
+      const lineCount = src.slice(probe).split("\n").length >= raw.split("\n").length ? raw.split("\n").length : 1;
+      props.onAddRef(activePath, from, from + lineCount - 1);
+    } else {
+      props.onAsk(`关于 ${activePath} 渲染预览里的这段内容：\n\`\`\`\n${raw.slice(0, 4000)}\n\`\`\`\n`);
+    }
+    setPvSel(null);
+    window.getSelection()?.removeAllRanges();
   };
 
   const fileName = (p: string) => p.split(/[\\/]/).pop() || p;
@@ -1375,13 +1495,18 @@ export function EditorPane(props: {
           </span>
         )}
         {props.active.kind === "file" && activePath && isMd && (
-          <button
-            className={"ed-tool md-tog" + (mdPreview ? " on" : "")}
-            title={mdPreview ? "切换到编辑模式（Ctrl+Shift+V）" : "切换到预览模式（Ctrl+Shift+V）"}
-            onClick={() => setMdPreview((v) => !v)}
-          >
-            <Icon name="eye" size={12} /> {mdPreview ? "编辑" : "预览"}
-          </button>
+          <div className="md-modes" title="Markdown 视图（Ctrl+Shift+V 循环切换）">
+            {(["edit", "split", "wysiwyg"] as const).map((m) => (
+              <button
+                key={m}
+                className={"md-mode" + (mdMode === m ? " on" : "")}
+                title={m === "wysiwyg" ? "写作：预览即编辑（Typora 式所见即所得）" : undefined}
+                onClick={() => setMdMode(m)}
+              >
+                {m === "edit" ? "编辑" : m === "split" ? "分屏" : "写作"}
+              </button>
+            ))}
+          </div>
         )}
         {props.active.kind === "file" && activePath && (
           <>
@@ -1401,14 +1526,15 @@ export function EditorPane(props: {
       <div className="ed-stage">
         {/* 编辑器宿主永久常驻（diff/md 预览只隐藏、不卸载）：monaco 实例仅在挂载时创建一次，
             automaticLayout 负责隐藏/显示后的重测量；卸载宿主会让 DOM 脱挂——「点了文件打不开」的根因 */}
-        <div ref={hostRef} className="ed-host" style={mdPreview || isDiff ? { display: "none" } : undefined} />
+        <div ref={stageRef} className="ed-stage-inner" style={{ display: "flex", flex: 1, minWidth: 0, position: "relative" }}>
+        <div ref={hostRef} className="ed-host" style={mdMode !== "edit" || isDiff ? { display: "none" } : undefined} />
         {isDiff ? (
           props.active.path ? (
             <DiffView path={props.active.path} store={props.diffData[props.active.path]} />
           ) : null
         ) : (
           <>
-            {!mdPreview && (
+            {mdMode === "edit" && (
               <div className="ed-ruler" title="报错总览（点击标记跳转，F8 下一条）">
                 {(() => {
                   const total = Math.max(1, editorRef.current?.getModel()?.getLineCount() || 1);
@@ -1429,17 +1555,38 @@ export function EditorPane(props: {
                 })()}
               </div>
             )}
-            {mdPreview && (
+            {mdMode === "split" && (
               <div
-                className="md md-preview"
+                ref={previewRef}
+                className="md md-preview split"
+                onMouseUp={onPreviewSelect}
+                onDoubleClick={onPreviewSelect}
                 dangerouslySetInnerHTML={{
                   __html: mdRender(props.active.kind === "file" && activePath ? props.docs.current[activePath]?.text ?? "" : ""),
                 }}
               />
             )}
-            <div className="ed-floats" style={mdPreview ? { display: "none" } : undefined}>
+            {mdMode === "wysiwyg" && (
+              <div
+                ref={wysiwygHostRef}
+                className="md md-preview wysiwyg-host"
+                onMouseUp={onPreviewSelect}
+                onDoubleClick={onPreviewSelect}
+              />
+            )}
+            {pvSel && (
+              <button
+                className="ed-tool add2chat pv-send"
+                style={{ left: Math.max(4, pvSel.x - 10), top: pvSel.y }}
+                title="把选中的渲染内容发送到对话输入框"
+                onClick={sendPreviewSel}
+              >
+                <Icon name="download" size={13} /> 发送到对话
+              </button>
+            )}
+            <div className="ed-floats" style={mdMode !== "edit" ? { display: "none" } : undefined}>
             {hasSelection && (
-              <button className="ed-tool add2chat" title="插入到对话输入框（光标处生成 @文件:行段，可穿插多段代码）" onClick={addRef}>
+              <button className="ed-tool add2chat" title="添加到对话输入框（引用卡片：文件名:行段，发送时展开为代码块）" onClick={addRef}>
                 <Icon name="download" size={13} />
               </button>
             )}
@@ -1461,6 +1608,7 @@ export function EditorPane(props: {
             )}
           </>
         )}
+        </div>{/* /ed-stage-inner */}
       </div>
       {edMenu && <EditorMenu x={edMenu.x} y={edMenu.y} items={buildMenuItems()} onClose={() => setEdMenu(null)} />}
       {refPanel && (

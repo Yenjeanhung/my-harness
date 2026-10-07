@@ -276,6 +276,47 @@
       .ed-ruler-mark:hover { outline: 1px solid #d7dae0aa; }
       /* md 预览模式：编辑器舞台内渲染（复用 .md 正文样式） */
       .md-preview { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 22px; font-size: 13.5px; background: #0d1017; }
+      /* md 三态：分屏 = 左编辑右预览各半（host 与 preview 都是 flex:1 自动对半） */
+      .md-preview.split { border-left: 1px solid #262a33; padding: 14px 18px; }
+      /* 写作模式（Typora 式 WYSIWYG）：ProseMirror 宿主铺满 + 去默认 outline，块间距与 .md 一致 */
+      .wysiwyg-host { padding: 14px 22px; }
+      .wysiwyg-host .ProseMirror { outline: none; min-height: 100%; }
+      .wysiwyg-host .ProseMirror p { margin: 0 0 10px; }
+      .wysiwyg-host .ProseMirror h1, .wysiwyg-host .ProseMirror h2, .wysiwyg-host .ProseMirror h3,
+      .wysiwyg-host .ProseMirror h4, .wysiwyg-host .ProseMirror h5, .wysiwyg-host .ProseMirror h6 {
+        margin: 18px 0 10px; line-height: 1.35;
+      }
+      .wysiwyg-host .ProseMirror ul, .wysiwyg-host .ProseMirror ol { margin: 0 0 10px; padding-left: 24px; }
+      .wysiwyg-host .ProseMirror blockquote { margin: 0 0 10px; padding: 2px 12px; border-left: 3px solid #30363d; color: #8b949e; }
+      .wysiwyg-host .ProseMirror pre {
+        background: #161b22; border: 1px solid #262a33; border-radius: 8px;
+        padding: 10px 12px; overflow-x: auto; margin: 0 0 10px;
+      }
+      .wysiwyg-host .ProseMirror pre code { background: transparent; padding: 0; }
+      .wysiwyg-host .ProseMirror table { border-collapse: collapse; margin: 0 0 10px; }
+      .wysiwyg-host .ProseMirror th, .wysiwyg-host .ProseMirror td {
+        border: 1px solid #30363d; padding: 5px 10px; text-align: left;
+      }
+      .wysiwyg-host .ProseMirror th { background: #161921; }
+      .wysiwyg-host .ProseMirror img { max-width: 100%; }
+      .wysiwyg-host .ProseMirror hr { border: none; border-top: 1px solid #30363d; margin: 12px 0; }
+      .wysiwyg-host .ProseMirror-selectednode { outline: 2px solid #1f6feb; }
+      /* 预览选中 → 「发送到对话」浮钮（absolute 于 ed-stage-inner） */
+      .pv-send {
+        position: absolute; z-index: 45; display: inline-flex; align-items: center; gap: 5px;
+        color: #79c0ff !important; background: #10151d; border-color: #1f6feb;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); font-size: 11.5px; padding: 4px 10px;
+      }
+      .pv-send:hover { color: #fff !important; background: #1f6feb; }
+      /* md 三态切换（tab 条上的分段小控件） */
+      .md-modes { display: inline-flex; border: 1px solid #30363d; border-radius: 7px; overflow: hidden; flex: none; }
+      .md-modes .md-mode {
+        background: transparent; border: none; color: #8b949e; font-size: 11.5px;
+        padding: 3px 10px; cursor: pointer;
+      }
+      .md-modes .md-mode + .md-mode { border-left: 1px solid #30363d; }
+      .md-modes .md-mode:hover { color: #d7dae0; }
+      .md-modes .md-mode.on { background: #1f2733; color: #e6edf3; }
       .ed-tool.on { color: #79c0ff; border-color: #1f6feb; }
       .ed-tool.md-tog { display: inline-flex; align-items: center; gap: 5px; }
       .add2chat { display: inline-flex; align-items: center; padding: 4px 8px; color: #79c0ff; }
@@ -759,6 +800,17 @@
         margin: 10px 14px 12px; border: 1px solid #30363d; border-radius: 12px;
         background: #0d1017; padding: 10px 12px 8px; flex: none;
       }
+      /* 输入框高度拖拽条：贴 composer 顶边（负 margin 吃掉内边距），hover 显握把线；
+         拖动调 textarea 高度、双击恢复自动伸缩（composerH 存 localStorage） */
+      .composer-resize { position: relative; height: 7px; margin: -10px -12px 6px; cursor: row-resize; flex: none; }
+      .composer-resize::after {
+        content: ""; position: absolute; left: 50%; top: 2px; transform: translateX(-50%);
+        width: 42px; height: 3px; border-radius: 2px; background: transparent;
+      }
+      .composer-resize:hover::after, body.composer-resizing .composer-resize::after { background: #3a424d; }
+      body.composer-resizing { cursor: row-resize; user-select: none; }
+      body.composer-resizing .composer textarea { cursor: row-resize; }
+      .chat-wide .composer-resize { margin: -14px -18px 8px; }
       /* —— 内嵌终端（编辑器下方抽屉，VS Code/ZCode 式）—— */
       /* 面板开关组（CodeBuddy 式：左侧栏 / 终端 / 对话栏），对话栏收起后浮在编辑器右上角 */
       .panel-toggles { display: inline-flex; align-items: center; gap: 2px; }
@@ -912,6 +964,12 @@
         white-space: pre-wrap; word-wrap: break-word;
       }
       .refpill { background: #132a45; border-radius: 6px; box-shadow: inset 0 0 0 1px #1f4d7a; }
+      /* 文件类型徽标（引用芯片前缀，FileTypeBadge）：扩展名 monogram + 类型色小方片 */
+      .ftbadge {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 14px; height: 13px; padding: 0 2.5px; border-radius: 3px;
+        font-size: 8.5px; font-weight: 700; font-family: Consolas, monospace; flex: none;
+      }
       /* —— 编辑器右键菜单（自绘，CodeBuddy 式：文本 + 快捷键右对齐 + 分组分隔线） —— */
       .edmenu {
         position: fixed; z-index: 96; min-width: 236px; max-height: 70vh; overflow-y: auto;
@@ -978,6 +1036,14 @@
       .chat-wide .controls .ctl.pchip.hot { color: #e3b341; } /* bypass 警示色不被轻量化覆盖 */
       /* 模型下拉不随 860px 宽行拉伸：按内容自适应宽度，弹出列表才不会横贯整行 */
       .chat-wide .controls .ctl.model { flex: 0 1 auto; width: auto; min-width: 0; max-width: 220px; }
+      /* SCM 提交/推送按钮进度态：转圈 + 阶段文案（.spin 在别处是父级限定的，这里给 git 面板一份） */
+      .git-commit-row .spin {
+        display: inline-block; width: 11px; height: 11px; flex: none;
+        border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; border-radius: 50%;
+        animation: gitspin 0.8s linear infinite;
+      }
+      @keyframes gitspin { to { transform: rotate(360deg); } }
+      .git-commit-row button:disabled { opacity: 0.65; cursor: default; }
       .controls .ctl {
         background: transparent; border: 1px solid #30363d; color: #8b949e;
         border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; max-width: 240px;

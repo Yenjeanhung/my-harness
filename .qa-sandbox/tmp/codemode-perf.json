@@ -1,0 +1,103 @@
+{
+ "rel": [
+  {
+   "t": 14601,
+   "dir": "SEND",
+   "type": "ListDir",
+   "dt": 4882
+  },
+  {
+   "t": 22777,
+   "dir": "SEND",
+   "type": "ListSessions",
+   "dt": 13058
+  },
+  {
+   "t": 22777,
+   "dir": "SEND",
+   "type": "GetSettings",
+   "dt": 13058
+  },
+  {
+   "t": 22780,
+   "dir": "RECV",
+   "type": "SessionCost",
+   "dt": 13061
+  },
+  {
+   "t": 22788,
+   "dir": "RECV",
+   "type": "SessionList",
+   "n": 12,
+   "dt": 13069
+  },
+  {
+   "t": 22869,
+   "dir": "RECV",
+   "type": "SessionList",
+   "n": 12,
+   "dt": 13150
+  },
+  {
+   "t": 22870,
+   "dir": "RECV",
+   "type": "Settings",
+   "dt": 13151
+  },
+  {
+   "t": 32998,
+   "dir": "RECV",
+   "type": "Pong",
+   "dt": 23279
+  },
+  {
+   "t": 38274,
+   "dir": "SEND",
+   "type": "Ping",
+   "dt": 28555
+  },
+  {
+   "t": 38564,
+   "dir": "RECV",
+   "type": "Pong",
+   "dt": 28845
+  }
+ ],
+ "lt": [
+  {
+   "s": 2588,
+   "d": 6176,
+   "n": "self"
+  },
+  {
+   "s": 9296,
+   "d": 411,
+   "n": "self"
+  },
+  {
+   "s": 9720,
+   "d": 461,
+   "n": "self"
+  },
+  {
+   "s": 10181,
+   "d": 4525,
+   "n": "self"
+  },
+  {
+   "s": 22789,
+   "d": 76,
+   "n": "self"
+  },
+  {
+   "s": 22870,
+   "d": 84,
+   "n": "self"
+  },
+  {
+   "s": 38497,
+   "d": 66,
+   "n": "self"
+  }
+ ]
+}

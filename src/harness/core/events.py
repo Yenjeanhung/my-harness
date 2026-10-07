@@ -88,34 +88,43 @@ class EventStore:
             self._db.commit()
         except Exception:
             pass  # 列已存在
+        try:  # 会话归属池（chat=会话模式 / code=代码模式）；老库 NULL 一律视作 chat
+            self._db.execute("ALTER TABLE session_meta ADD COLUMN origin TEXT")
+            self._db.commit()
+        except Exception:
+            pass  # 列已存在
         self._backfill_searchable()
         self._db.commit()
 
     def set_session_meta(
-        self, session_id: str, title: str | None = None, pinned: bool | None = None, group: Any = "__unset__"
+        self, session_id: str, title: str | None = None, pinned: bool | None = None, group: Any = "__unset__",
+        origin: str | None | Any = "__unset__",
     ) -> dict[str, Any]:
-        """更新会话元数据（重命名/置顶/手动分组）；None 表示清空，__unset__ 表示保持不变。"""
+        """更新会话元数据（重命名/置顶/手动分组/归属池）；None 表示清空，__unset__ 表示保持不变。"""
         row = self._db.execute(
-            "SELECT title, pinned, group_name, searchable_text FROM session_meta WHERE session_id = ?",
+            "SELECT title, pinned, group_name, searchable_text, origin FROM session_meta WHERE session_id = ?",
             (session_id,),
         ).fetchone()
         cur_title = row[0] if row else None
         cur_pinned = bool(row[1]) if row else False
         cur_group = row[2] if row else None
         cur_search = row[3] if row else None
+        cur_origin = row[4] if row else None
         if title is not None:
             cur_title = title
         if pinned is not None:
             cur_pinned = pinned
         if group != "__unset__":
             cur_group = group or None
+        if origin != "__unset__":
+            cur_origin = origin or None
         self._db.execute(
-            "INSERT OR REPLACE INTO session_meta (session_id, title, pinned, group_name, searchable_text) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (session_id, cur_title, int(cur_pinned), cur_group, cur_search),
+            "INSERT OR REPLACE INTO session_meta (session_id, title, pinned, group_name, searchable_text, origin) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, cur_title, int(cur_pinned), cur_group, cur_search, cur_origin),
         )
         self._db.commit()
-        return {"title": cur_title, "pinned": cur_pinned, "group": cur_group}
+        return {"title": cur_title, "pinned": cur_pinned, "group": cur_group, "origin": cur_origin}
 
     def rename_group(self, old: str, new: str) -> None:
         self._db.execute("UPDATE session_meta SET group_name = ? WHERE group_name = ?", (new, old))
@@ -196,12 +205,12 @@ class EventStore:
             "GROUP BY session_id ORDER BY MAX(ts) DESC"
         ).fetchall()
         meta = {
-            r[0]: (r[1], bool(r[2]), r[3])
-            for r in self._db.execute("SELECT session_id, title, pinned, group_name FROM session_meta")
+            r[0]: (r[1], bool(r[2]), r[3], r[4])
+            for r in self._db.execute("SELECT session_id, title, pinned, group_name, origin FROM session_meta")
         }
         out = []
         for r in rows:
-            custom_title, pinned, group_name = meta.get(r[0], (None, False, None))
+            custom_title, pinned, group_name, origin = meta.get(r[0], (None, False, None, None))
             title = custom_title or ""
             first = self._db.execute(
                 "SELECT payload FROM events WHERE session_id = ? AND type = 'user_message' "
@@ -227,6 +236,7 @@ class EventStore:
                     "title": title,
                     "pinned": pinned,
                     "group": group_name,
+                    "origin": origin or "chat",  # 老库未打标的会话一律归会话模式池
                 }
             )
         out.sort(key=lambda x: not x["pinned"])  # 置顶优先（稳定排序保持组内最近在前）
@@ -264,21 +274,28 @@ class EventStore:
             "db_bytes": db.stat().st_size if db.exists() else 0,
         }
 
-    def search(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+    def search(self, query: str, limit: int = 20, origin: str | None = None) -> list[dict[str, Any]]:
         """跨会话内容检索：对预计算列 searchable_text 做 LIKE（ZCode 同款）。
 
         每个会话只返回首条命中的上下文 snippet；关键词中的 %/_ 会被转义为字面量。
+        origin 给定时只搜该归属池的会话（NULL 视作 chat）。
         """
         q = query.strip()
         if not q:
             return []
         esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        origin_clause = ""
+        params: list[Any] = [f"%{esc}%"]
+        if origin:
+            origin_clause = " AND COALESCE(m.origin, 'chat') = ? "
+            params.append(origin)
+        params.append(limit)
         rows = self._db.execute(
             "SELECT m.session_id, m.searchable_text, MAX(e.rowid) AS last_rowid "
             "FROM session_meta m JOIN events e ON e.session_id = m.session_id "
-            "WHERE m.searchable_text LIKE ? ESCAPE '\\' "
+            f"WHERE m.searchable_text LIKE ? ESCAPE '\\' {origin_clause} "
             "GROUP BY m.session_id ORDER BY last_rowid DESC LIMIT ?",
-            (f"%{esc}%", limit),
+            tuple(params),
         ).fetchall()
         out = []
         for sid, text, _ts in rows:

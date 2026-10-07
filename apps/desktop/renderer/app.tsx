@@ -1978,6 +1978,18 @@ function App() {
   const titlebarWith = (menu: React.ReactNode, showToggles: boolean) => (
     <div className="titlebar">
       <span className="tb-title">Y Harness</span>
+      {/* 模式切换（顶栏专属）：会话模式显示 </>（去代码模式），代码模式显示气泡（回会话模式）。
+          与活动栏的会话/文件键分工：这里切模式，那里切侧栏内容 */}
+      {view !== "settings" && (
+        <button
+          className="mode-switch"
+          title={editorOpen ? "切换到会话模式" : "切换到代码模式"}
+          onClick={() => (editorOpen ? toggleRail("sessions") : toggleRail("tree"))}
+        >
+          {/* 图标 = 点它将去往的模式：代码模式显示对话气泡（回会话），会话模式显示 </>（去代码） */}
+          <Icon name={editorOpen ? "chat" : "code"} size={14} />
+        </button>
+      )}
       {menu}
       {/* 面板开关（左侧栏/终端/对话栏）是代码模式专属；对话模式/设置页 = ZCode 式干净顶栏（侧栏收起后有左缘浮出按钮可恢复） */}
       {showToggles && <div className="panel-toggles">{panelToggles}</div>}
@@ -2148,10 +2160,10 @@ function App() {
     <div className="root">
       {titlebar}
       <div className="app">
+      {/* 活动栏（会话/文件/搜索/Git 切换）是代码模式专属；会话模式 = 纯净大对话（模式切换走顶栏按钮） */}
+      {editorOpen && (
       <div className="actbar">
-        <button title="会话" className={railActive === "sessions" ? "on" : ""} onClick={() => toggleRail("sessions")}>
-          <Icon name="chat" size={16} />
-        </button>
+        {/* 会话键已移除：回会话模式走顶栏模式切换按钮（气泡） */}
         <button title="资源管理器" className={railActive === "tree" ? "on" : ""} onClick={() => toggleRail("tree")}>
           <Icon name="folder" size={16} />
         </button>
@@ -2164,6 +2176,7 @@ function App() {
         </button>
         <div className="act-spacer" />
       </div>
+      )}
       {sidebarOpen && (
       <aside>
         {sideTab === "sessions" && (
@@ -2979,12 +2992,7 @@ function App() {
                   {lastRun.usage ? ` · ↑${fmtTok(lastRun.usage.input_tokens)} ↓${fmtTok(lastRun.usage.output_tokens)} tok` : ""}
                 </span>
               ) : null}
-              {(sessCost || runUsage) && (
-                <span title="当前会话累计（含进行中）">
-                  会话 ↑{fmtTok((sessCost?.input_tokens || 0) + (runUsage?.input_tokens || 0))} ↓
-                  {fmtTok((sessCost?.output_tokens || 0) + (runUsage?.output_tokens || 0))} tok
-                </span>
-              )}
+              {/* 「会话累计」已去掉：与实时/最近统计数字重复（用户要求） */}
               {sessCost?.cost_usd != null && <span>{fmtCost(sessCost.cost_usd)}</span>}
             </div>
           );

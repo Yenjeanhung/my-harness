@@ -41,6 +41,21 @@
       }
       .tb-title { font-size: 12.5px; font-weight: 600; color: #8b949e; }
       .titlebar .panel-toggles { margin-left: auto; -webkit-app-region: no-drag; }
+      /* 模式切换（Y Harness 右侧）：会话/代码模式一键互切 */
+      .titlebar .mode-switch {
+        -webkit-app-region: no-drag;
+        width: 28px; height: 28px; margin-left: 10px; flex: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: transparent; border: none; border-radius: 7px;
+        color: #a9b4bf; cursor: pointer;
+      }
+      .titlebar .mode-switch:hover { color: #e6edf3; background: #1c2230; }
+      /* 切换时半填充圆翻转半圈入场 = 「翻到另一面」 */
+      .titlebar .mode-switch svg { animation: modespin 0.4s cubic-bezier(0.3, 0.7, 0.2, 1); }
+      @keyframes modespin {
+        from { transform: rotate(-180deg) scale(0.7); opacity: 0.2; }
+        to { transform: rotate(0deg) scale(1); opacity: 1; }
+      }
       /* —— 顶栏菜单栏（VS Code 式）：menubar 不参与拖拽，弹层 fixed 挂窗口坐标 —— */
       .menubar { display: flex; align-items: center; gap: 1px; -webkit-app-region: no-drag; margin-left: 6px; }
       .mb-item {
@@ -907,12 +922,24 @@
       .chat-wide header { max-width: 920px; width: 100%; margin: 0 auto; padding: 10px 18px; background: transparent; }
       .chat-wide #msgs { align-items: center; padding: 18px 24px; }
       .chat-wide #msgs > * { width: 100%; max-width: 860px; }
+      /* 消息导航条与内容列拉开间距（ZCode 式，不再贴着正文） */
+      .chat-wide #msgs.with-nav { padding-left: 130px; }
       .chat-wide .usage-strip { width: calc(100% - 48px); max-width: 860px; margin: 0 auto; padding: 3px 0 0; }
       .chat-wide .composer {
         width: calc(100% - 48px); max-width: 860px; margin: 10px auto 18px;
         padding: 14px 18px 10px; border-radius: 16px;
       }
       .chat-wide .composer textarea, .chat-wide .input-mirror { font-size: 15px; line-height: 1.55; }
+      /* 会话模式 composer 底部控件：无边框轻量化（ZCode 式简约），hover 才显形 */
+      .chat-wide .controls { gap: 8px; margin-top: 8px; }
+      .chat-wide .controls .ctl {
+        background: transparent; border-color: transparent; color: #8b949e;
+        padding: 4px 9px; border-radius: 7px;
+      }
+      .chat-wide .controls .ctl:hover { background: #1c2230; color: #d7dae0; border-color: transparent; }
+      .chat-wide .controls .ctl.pchip.hot { color: #e3b341; } /* bypass 警示色不被轻量化覆盖 */
+      /* 模型下拉不随 860px 宽行拉伸：按内容自适应宽度，弹出列表才不会横贯整行 */
+      .chat-wide .controls .ctl.model { flex: 0 1 auto; width: auto; min-width: 0; max-width: 220px; }
       .controls .ctl {
         background: transparent; border: 1px solid #30363d; color: #8b949e;
         border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; max-width: 240px;

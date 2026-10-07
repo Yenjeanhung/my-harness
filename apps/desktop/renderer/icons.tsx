@@ -12,6 +12,13 @@ function fmtClockCn(sec: number): string {
 }
 
 export const ICON_PATHS = {
+  // 模式切换专用：半填充圆（一面两态），配点击半圈旋转 = 「翻到另一面」
+  contrast: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" />
+    </>
+  ),
   edit: (
     <>
       <path d="M12 20h9" />

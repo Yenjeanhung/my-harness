@@ -101,3 +101,7 @@ evals/tasks/      # 示例评测用例
 - M2 记忆与技能：memory blocks、AGENT.md、语义记忆、Skills
 - M3 多智能体：subagent、orchestrator-worker、handoff、Docker 沙箱
 - M4 生产化与桌面端：OTel、评测 harness、Electron + React 19 桌面端
+
+## About
+
+这个仓库用于验证 DeepSeek Super-agent 的完整工作流。本 Issue 由端到端演示自动创建。
